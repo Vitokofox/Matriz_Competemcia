@@ -5,7 +5,7 @@ evaluaciones y usuarios autorizados.
 
 - Backend: FastAPI, SQLAlchemy, Alembic y SQLite.
 - Frontend: React, TypeScript y Vite.
-- Plataforma de inicio automático documentada: Windows PowerShell.
+- Inicio automático disponible para Windows PowerShell y Linux Bash.
 
 ## Requisitos
 
@@ -16,8 +16,11 @@ Instale antes de comenzar:
 - npm 10 o superior.
 - Git.
 - PowerShell 5.1 o superior en Windows.
+- Bash en Linux.
 
 ## Instalación Desde Cero
+
+### Windows PowerShell
 
 Abra PowerShell y ejecute:
 
@@ -38,6 +41,24 @@ npm install --prefix frontend
 El entorno virtual `backend/.venv`, las dependencias de Node y la base de datos
 local no se versionan en Git. Por eso estos pasos son necesarios después de cada
 clon nuevo.
+
+### Linux Bash
+
+Abra una terminal y ejecute:
+
+```bash
+git clone https://github.com/Vitokofox/Matriz_Competemcia.git
+cd Matriz_Competemcia
+
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install --upgrade pip
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+npm install --prefix frontend
+```
 
 ## Configuración
 
@@ -76,7 +97,10 @@ correspondiente en `CORS_ORIGINS` del backend.
 
 ## Migración Inicial
 
-Desde la raíz del proyecto, ejecute:
+El inicio automático aplica las migraciones pendientes. Para ejecutarlas de
+forma manual, desde la raíz del proyecto use el comando correspondiente:
+
+### Windows PowerShell
 
 ```powershell
 Set-Location backend
@@ -84,13 +108,24 @@ Set-Location backend
 Set-Location ..
 ```
 
+### Linux Bash
+
+```bash
+(
+  cd backend
+  .venv/bin/python -m alembic -c alembic.ini upgrade head
+)
+```
+
 Esto crea la base SQLite, sus tablas, permisos, roles y secuencias para generar
 códigos automáticos como `TRB-001`, `SUP-001`, `EVA-001`, `CMP-001`, `MAQ-001`,
 `PST-001` y `PRO-001`.
 
-## Inicio Automático En Windows
+## Inicio Automático
 
 Desde la raíz del proyecto:
+
+### Windows
 
 ```powershell
 .\iniciar.ps1
@@ -98,13 +133,28 @@ Desde la raíz del proyecto:
 
 También puede ejecutar `iniciar.bat` con doble clic.
 
-El script:
+### Linux
+
+```bash
+./iniciar.sh
+```
+
+Si Git no conservó el permiso de ejecución, asígnelo una vez:
+
+```bash
+chmod +x iniciar.sh
+```
+
+Los lanzadores de Windows y Linux:
 
 1. Verifica que exista `backend/.venv`.
 2. Verifica que exista `frontend/node_modules`.
 3. Ejecuta las migraciones pendientes.
-4. Abre FastAPI en una ventana de PowerShell.
-5. Abre Vite en otra ventana de PowerShell.
+4. Inician FastAPI y Vite.
+
+En Linux, ambos servicios se mantienen asociados a la terminal actual y se
+detienen al pulsar `Ctrl+C`. En Windows se abren en ventanas de PowerShell
+separadas.
 
 Direcciones disponibles:
 
@@ -115,7 +165,7 @@ Direcciones disponibles:
 
 ## Inicio Manual
 
-### Backend
+### Backend en Windows PowerShell
 
 En una terminal:
 
@@ -125,7 +175,15 @@ Set-Location backend
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-### Frontend
+### Backend en Linux Bash
+
+```bash
+cd backend
+.venv/bin/python -m alembic -c alembic.ini upgrade head
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0
+```
+
+### Frontend en Windows PowerShell
 
 En otra terminal, desde la raíz:
 
@@ -133,9 +191,17 @@ En otra terminal, desde la raíz:
 npm run dev --prefix frontend
 ```
 
+### Frontend en Linux Bash
+
+En otra terminal, desde la raíz:
+
+```bash
+npm run dev --prefix frontend
+```
+
 Para permitir acceso desde otros dispositivos de la red:
 
-```powershell
+```text
 npm run dev --prefix frontend -- --host 0.0.0.0
 ```
 
@@ -231,6 +297,7 @@ frontend/
   src/                 Aplicación React y cliente de API
 iniciar.ps1            Inicio automático en Windows
 iniciar.bat            Lanzador de PowerShell
+iniciar.sh             Inicio automático en Linux
 ```
 
 ## Producción
