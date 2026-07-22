@@ -1,0 +1,3 @@
+.coverage-list { display: grid; gap: var(--space-4); }
+.progress { overflow: hidden; height: .5rem; border-radius: 999px; background: var(--color-surface-muted); }
+.progress span { display: block; height: 100%; background: var(--brand-orange-600); }

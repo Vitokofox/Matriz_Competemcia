@@ -1,0 +1,15 @@
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+import type { PermissionUser } from '../lib/api'
+
+export type AppSection = 'overview' | 'workers' | 'evaluations' | 'configuration'
+export type ConnectionState = 'checking' | 'ok' | 'offline'
+
+export function AppShell({ user, section, connection, onSectionChange, onLogout, children }: { user: PermissionUser; section: AppSection; connection: ConnectionState; onSectionChange: (section: AppSection) => void; onLogout: () => void; children: ReactNode }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  function navigate(next: AppSection) { setMenuOpen(false); onSectionChange(next) }
+  return <main className="app-layout"><aside className={menuOpen ? 'sidebar mobile-open' : 'sidebar'}><div className="sidebar-top"><a className="brand" href="/"><span className="brand-mark">MC</span><strong>Matriz<br />Competencias</strong></a><button className="menu-toggle" aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div><nav aria-label="Navegación principal"><NavButton active={section === 'overview'} onClick={() => navigate('overview')} icon="⌂">Resumen</NavButton>{user.permisos.includes('trabajadores.ver') && <NavButton active={section === 'workers'} onClick={() => navigate('workers')} icon="◌">Trabajadores</NavButton>}{user.permisos.includes('evaluaciones.crear') && <NavButton active={section === 'evaluations'} onClick={() => navigate('evaluations')} icon="✓">Evaluaciones</NavButton>}{(user.permisos.includes('usuarios.ver') || user.permisos.includes('catalogos.gestionar') || user.permisos.includes('roles.gestionar')) && <NavButton active={section === 'configuration'} onClick={() => navigate('configuration')} icon="⚙">Configuración</NavButton>}</nav><div className="sidebar-footer" role="status"><span className={`connection-dot ${connection}`} /> API {connection === 'ok' ? 'conectada' : connection === 'offline' ? 'desconectada' : 'pendiente'}</div></aside>{menuOpen && <button className="menu-backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} />}{<section className="workspace"><header className="workspace-header"><div><p className="eyebrow">Panel de control</p><h1>{sectionTitle(section)}</h1></div><div className="profile"><span aria-hidden="true">{user.nombre_completo.slice(0, 1)}</span><div><strong>{user.nombre_completo}</strong><small>{user.username}</small></div><button className="secondary-action" onClick={onLogout}>Salir</button></div></header>{children}</section>}</main>
+}
+
+function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: string; children: string }) { return <button className={active ? 'nav-item active' : 'nav-item'} aria-current={active ? 'page' : undefined} onClick={onClick}><span aria-hidden="true">{icon}</span><span>{children}</span></button> }
+function sectionTitle(section: AppSection) { return { overview: 'Resumen operativo', workers: 'Trabajadores', evaluations: 'Evaluaciones', configuration: 'Configuración' }[section] }

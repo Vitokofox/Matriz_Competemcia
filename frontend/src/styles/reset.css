@@ -1,0 +1,7 @@
+*, *::before, *::after { box-sizing: border-box; }
+html { min-width: 320px; background: var(--color-page); }
+body { margin: 0; min-width: 320px; min-height: 100svh; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+img { max-width: 100%; }

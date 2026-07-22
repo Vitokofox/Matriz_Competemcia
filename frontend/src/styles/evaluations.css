@@ -1,0 +1,4 @@
+.evaluation-page, .evaluation-list-page, .evaluation-detail { max-width: 72rem; }
+.status-completada { color: var(--color-success); background: var(--color-success-bg); }
+.status-borrador { color: var(--color-warning); background: var(--color-warning-bg); }
+.status-anulada { color: var(--color-danger); background: var(--color-danger-bg); }

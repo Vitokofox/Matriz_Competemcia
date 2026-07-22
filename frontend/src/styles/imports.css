@@ -1,0 +1,3 @@
+.import-page .import-card { background: var(--color-surface); }
+.import-issues.error-list { color: var(--color-danger); background: var(--color-danger-bg); }
+.import-help { color: var(--color-text-muted); }

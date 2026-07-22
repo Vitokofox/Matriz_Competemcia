@@ -1,0 +1,8 @@
+body { color: var(--color-text); font-family: var(--font-sans); font-size: var(--font-size-md); line-height: 1.5; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin-top: 0; }
+h1, h2, h3 { color: var(--brand-gray-900); line-height: 1.2; }
+h1 { font-size: var(--font-size-2xl); }
+h2 { font-size: var(--font-size-xl); }
+h3 { font-size: var(--font-size-lg); }
+.eyebrow { color: var(--brand-gray-700); font-size: var(--font-size-xs); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.helper-text { color: var(--color-text-muted); }
