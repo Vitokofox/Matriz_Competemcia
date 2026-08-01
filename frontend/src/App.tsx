@@ -96,7 +96,7 @@ function AuthenticatedApp({ user, onLogout }: { user: PermissionUser; onLogout: 
     onLogout()
   }
 
-  return <AppShell user={user} section={section} connection={connection as ConnectionState} onSectionChange={(next) => { if (next === 'workers') setWorkerId(null); setSection(next) }} onLogout={logout}>{section === 'configuration' ? <ConfigurationPage /> : section === 'workers' ? workerId ? <WorkerDetailPage workerId={workerId} onBack={() => setWorkerId(null)} /> : <WorkersPage onOpenDetail={setWorkerId} /> : section === 'evaluations' ? <EvaluationsPage /> : <Overview />}</AppShell>
+  return <AppShell user={user} section={section} connection={connection as ConnectionState} onSectionChange={(next) => { if (next === 'workers') setWorkerId(null); setSection(next) }} onLogout={logout}>{section === 'configuration' ? <ConfigurationPage /> : section === 'workers' ? workerId ? <WorkerDetailPage workerId={workerId} onBack={() => setWorkerId(null)} /> : <WorkersPage onOpenDetail={setWorkerId} /> : section === 'evaluations' ? <EvaluationsPage canAdminister={user.permisos.includes('evaluaciones.anular')} canSchedule={user.permisos.includes('evaluaciones.programar')} /> : <Overview />}</AppShell>
 }
 
 function Overview() {

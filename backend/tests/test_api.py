@@ -23,13 +23,34 @@ def client() -> Generator[TestClient, None, None]:
     Base.metadata.create_all(engine)
 
     with Session(engine) as session:
-        permission = Permiso(
-            codigo="usuarios.ver",
-            nombre="Ver usuarios",
-            modulo="usuarios",
-            accion="ver",
-        )
-        role = Rol(nombre="Administrador", sistema=True, permisos=[permission])
+        permissions = [
+            Permiso(
+                codigo="usuarios.ver",
+                nombre="Ver usuarios",
+                modulo="usuarios",
+                accion="ver",
+            ),
+            Permiso(
+                codigo="usuarios.crear",
+                nombre="Crear usuarios",
+                modulo="usuarios",
+                accion="crear",
+            ),
+            Permiso(
+                codigo="usuarios.editar",
+                nombre="Editar usuarios",
+                modulo="usuarios",
+                accion="editar",
+            ),
+            Permiso(
+                codigo="roles.ver",
+                nombre="Ver roles",
+                modulo="roles",
+                accion="ver",
+            ),
+        ]
+        role = Rol(nombre="Administrador", sistema=True, permisos=permissions)
+        session.add_all([role, Rol(nombre="Supervisor"), Rol(nombre="Evaluador")])
         session.add(
             Usuario(
                 username="admin",
@@ -124,7 +145,60 @@ def test_login_carga_permisos_del_usuario(client: TestClient) -> None:
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert me.status_code == 200
-    assert me.json()["permisos"] == ["usuarios.ver"]
+    assert me.json()["permisos"] == [
+        "roles.ver",
+        "usuarios.crear",
+        "usuarios.editar",
+        "usuarios.ver",
+    ]
+
+
+def test_usuario_con_roles_crea_supervisor_y_evaluador(client: TestClient) -> None:
+    token = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "Secret123!"}
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    roles = {
+        item["nombre"]: item["id"]
+        for item in client.get("/api/roles", headers=headers).json()
+    }
+    created = client.post(
+        "/api/usuarios",
+        headers=headers,
+        json={
+            "username": "ana.super",
+            "correo": "ana.super@test.local",
+            "nombre_completo": "Ana Supervisora",
+            "password": "Secret123!",
+            "rol_ids": [roles["Supervisor"], roles["Evaluador"]],
+        },
+    )
+    assert created.status_code == 201
+
+    supervisors = client.get("/api/supervisores").json()
+    evaluators = client.get("/api/evaluadores").json()
+    assert len(supervisors) == 1
+    assert len(evaluators) == 1
+    assert supervisors[0]["usuario_id"] == created.json()["id"]
+    assert evaluators[0]["usuario_id"] == created.json()["id"]
+    assert supervisors[0]["documento"] == "ana.super"
+
+    updated = client.patch(
+        f"/api/usuarios/{created.json()['id']}",
+        headers=headers,
+        json={"rol_ids": [roles["Evaluador"]]},
+    )
+    assert updated.status_code == 200
+    assert client.get("/api/supervisores").json()[0]["activo"] is False
+    assert client.get("/api/evaluadores").json()[0]["activo"] is True
+
+    client.patch(
+        f"/api/usuarios/{created.json()['id']}",
+        headers=headers,
+        json={"rol_ids": [roles["Supervisor"], roles["Evaluador"]]},
+    )
+    assert len(client.get("/api/supervisores").json()) == 1
+    assert client.get("/api/supervisores").json()[0]["activo"] is True
 
 
 def test_codigo_de_trabajador_se_genera_automaticamente(client: TestClient) -> None:

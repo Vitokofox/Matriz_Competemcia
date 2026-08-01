@@ -87,5 +87,13 @@ def require_any_permission(*permission_codes: str):
     return dependency
 
 
+def require_admin(user: Usuario = Depends(get_current_user)) -> Usuario:
+    if not any(role.nombre == "Administrador" and role.activo for role in user.roles):
+        raise HTTPException(
+            status_code=403, detail="Solo el administrador puede realizar esta acción"
+        )
+    return user
+
+
 def get_permission(db: Session, code: str) -> Permiso | None:
     return db.query(Permiso).filter_by(codigo=code, activo=True).first()

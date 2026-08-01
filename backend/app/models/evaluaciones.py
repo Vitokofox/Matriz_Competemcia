@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
     Date,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -35,6 +37,13 @@ class Evaluacion(TimestampMixin, Base):
             "(supervisor_id IS NOT NULL) != (evaluador_id IS NOT NULL)",
             name="ejecutor_autorizado",
         ),
+        Index(
+            "uq_evaluacion_trabajador_puesto_completada",
+            "trabajador_id",
+            "puesto_id",
+            unique=True,
+            sqlite_where=text("estado = 'completada'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -54,19 +63,29 @@ class Evaluacion(TimestampMixin, Base):
         ForeignKey("puestos.id", ondelete="RESTRICT")
     )
     fecha: Mapped[date] = mapped_column(Date)
+    proxima_fecha: Mapped[date | None] = mapped_column(Date)
     estado: Mapped[str] = mapped_column(
         String(20), default="borrador", server_default="borrador"
     )
     observaciones: Mapped[str | None] = mapped_column(Text)
+    correccion_habilitada_hasta: Mapped[datetime | None]
+    correccion_habilitada_por_id: Mapped[int | None] = mapped_column(Integer)
+    motivo_correccion: Mapped[str | None] = mapped_column(Text)
+    motivo_anulacion: Mapped[str | None] = mapped_column(Text)
+    anulada_en: Mapped[datetime | None]
+    anulada_por_usuario_id: Mapped[int | None] = mapped_column(Integer)
 
     trabajador: Mapped[Trabajador] = relationship()
     evaluador: Mapped[Evaluador] = relationship()
     supervisor: Mapped[Supervisor] = relationship()
-    usuario_ejecutor: Mapped[Usuario] = relationship()
+    usuario_ejecutor: Mapped[Usuario] = relationship(foreign_keys=[usuario_ejecutor_id])
     puesto: Mapped[Puesto] = relationship()
     detalles: Mapped[list[EvaluacionDetalle]] = relationship(
         back_populates="evaluacion",
         cascade="all, delete-orphan",
+    )
+    versiones: Mapped[list[EvaluacionVersion]] = relationship(
+        back_populates="evaluacion", cascade="all, delete-orphan"
     )
 
 
@@ -100,3 +119,20 @@ class EvaluacionDetalle(TimestampMixin, Base):
     @classmethod
     def _aprobado_expression(cls):
         return cls.nivel_obtenido >= cls.nivel_minimo
+
+
+class EvaluacionVersion(TimestampMixin, Base):
+    __tablename__ = "evaluacion_versiones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evaluacion_id: Mapped[int] = mapped_column(
+        ForeignKey("evaluaciones.id", ondelete="CASCADE")
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    datos: Mapped[str] = mapped_column(Text)
+    motivo: Mapped[str] = mapped_column(Text)
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL")
+    )
+
+    evaluacion: Mapped[Evaluacion] = relationship(back_populates="versiones")

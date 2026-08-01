@@ -1,3 +1,4 @@
+from app.models.capacitacion import PlanCapacitacion, PlanCapacitacionActividad
 from app.models.catalogos import (
     Actividad,
     Area,
@@ -12,7 +13,7 @@ from app.models.catalogos import (
     PuestoMaquina,
     Turno,
 )
-from app.models.evaluaciones import Evaluacion, EvaluacionDetalle
+from app.models.evaluaciones import Evaluacion, EvaluacionDetalle, EvaluacionVersion
 from app.models.personas import (
     AsignacionLaboral,
     Evaluador,
@@ -26,12 +27,15 @@ from app.models.seguridad import Permiso, Rol, Usuario
 
 __all__ = [
     "Actividad",
+    "PlanCapacitacion",
+    "PlanCapacitacionActividad",
     "Area",
     "AsignacionLaboral",
     "Cargo",
     "Competencia",
     "Evaluacion",
     "EvaluacionDetalle",
+    "EvaluacionVersion",
     "Evaluador",
     "Permiso",
     "Rol",

@@ -283,12 +283,14 @@ class EvaluacionCreate(BaseModel):
     fecha: date
     observaciones: str | None = None
     detalles: list[EvaluacionDetalleCreate] = Field(min_length=1)
+    proxima_fecha: date | None = None
 
 
 class EvaluacionUpdate(BaseModel):
     fecha: date | None = None
     observaciones: str | None = None
     detalles: list[EvaluacionDetalleCreate] | None = Field(default=None, min_length=1)
+    proxima_fecha: date | None = None
 
 
 class EvaluacionResponse(SchemaBase):
@@ -301,9 +303,65 @@ class EvaluacionResponse(SchemaBase):
     fecha: date
     estado: str
     observaciones: str | None
+    proxima_fecha: date | None
+    correccion_habilitada_hasta: datetime | None
+    motivo_correccion: str | None
+    motivo_anulacion: str | None
+    anulada_en: datetime | None
     detalles: list[EvaluacionDetalleResponse]
     creado_en: datetime
     actualizado_en: datetime
+
+
+class PlanCapacitacionActividadCreate(BaseModel):
+    actividad_id: int
+    fecha_programada: date
+
+
+class PlanCapacitacionActividadResponse(SchemaBase):
+    id: int
+    plan_id: int
+    actividad_id: int
+    fecha_programada: date
+    fecha_reprogramacion_1: date | None
+    fecha_reprogramacion_2: date | None
+    fecha_cumplimiento: date | None
+    estado: str
+    observaciones: str | None
+    creado_en: datetime
+    actualizado_en: datetime
+
+
+class PlanCapacitacionCreate(BaseModel):
+    trabajador_id: int
+    puesto_id: int
+    tipo: str = Field(pattern="^(reevaluacion|nuevo_puesto|reemplazo|manual)$")
+    motivo: str | None = None
+    fecha_inicio: date
+    actividades: list[PlanCapacitacionActividadCreate] = Field(min_length=1)
+
+
+class PlanCapacitacionResponse(SchemaBase):
+    id: int
+    trabajador_id: int
+    puesto_id: int
+    evaluacion_id: int | None
+    tipo: str
+    estado: str
+    motivo: str | None
+    fecha_inicio: date
+    fecha_fin: date | None
+    actividades: list[PlanCapacitacionActividadResponse]
+    creado_en: datetime
+    actualizado_en: datetime
+
+
+class PlanActividadDateUpdate(BaseModel):
+    fecha: date
+
+
+class CorrectionEnableRequest(BaseModel):
+    motivo: str = Field(min_length=5, max_length=500)
 
 
 class TrabajadorCapacitadoResponse(TrabajadorResponse):

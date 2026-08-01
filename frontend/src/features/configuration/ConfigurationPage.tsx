@@ -28,11 +28,12 @@ import { WorkerManagementPage } from './WorkerManagementPage'
 import { MachineManagementPage, PositionManagementPage, ProcessManagementPage } from './StructureManagementPage'
 import { RolesManagementPage, UsersManagementPage } from './SecurityManagementPage'
 import { ImportPage } from './ImportPage'
+import { TrainingPlansPage } from './TrainingPlansPage'
 
 type ConfigKey =
   | 'areas' | 'cargos' | 'turnos' | 'actividades' | 'competencias' | 'maquinas' | 'procesos'
   | 'puestos' | 'supervisores' | 'evaluadores' | 'usuarios' | 'roles' | 'permisos'
-   | 'requisitos' | 'trabajadores' | 'carga'
+   | 'requisitos' | 'trabajadores' | 'carga' | 'capacitacion'
 
 const catalogConfig: Record<string, { label: string; path: string; code?: boolean }> = {
   areas: { label: 'Áreas', path: 'areas' },
@@ -63,6 +64,8 @@ export function ConfigurationPage() {
         <ConfigNavButton active={active === 'roles'} onClick={() => setActive('roles')}>Roles</ConfigNavButton>
         <ConfigNavButton active={active === 'permisos'} onClick={() => setActive('permisos')}>Permisos</ConfigNavButton>
         <ConfigNavButton active={active === 'carga'} onClick={() => setActive('carga')}>Carga masiva</ConfigNavButton>
+        <p className="eyebrow security-label">Seguimiento</p>
+        <ConfigNavButton active={active === 'capacitacion'} onClick={() => setActive('capacitacion')}>Capacitación</ConfigNavButton>
       </section>
       <section className="config-panel">
         {active === ('__legacy__' as ConfigKey) && <><WorkerConfigurationPage /><ProcessesPage /><MachinesPage /><PositionsPage /></>}
@@ -77,6 +80,7 @@ export function ConfigurationPage() {
         {active === 'roles' && <RolesManagementPage />}
         {active === 'permisos' && <PermissionsPage />}
         {active === 'carga' && <ImportPage />}
+        {active === 'capacitacion' && <TrainingPlansPage />}
       </section>
     </div>
   )

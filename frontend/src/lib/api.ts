@@ -71,7 +71,37 @@ export interface EvaluationItem {
   fecha: string
   estado: 'borrador' | 'completada' | 'anulada'
   observaciones: string | null
+  proxima_fecha: string | null
+  correccion_habilitada_hasta: string | null
+  motivo_correccion: string | null
+  motivo_anulacion: string | null
+  anulada_en: string | null
   detalles: EvaluationDetailItem[]
+}
+
+export interface TrainingActivity {
+  id: number
+  plan_id: number
+  actividad_id: number
+  fecha_programada: string
+  fecha_reprogramacion_1: string | null
+  fecha_reprogramacion_2: string | null
+  fecha_cumplimiento: string | null
+  estado: 'pendiente' | 'completada' | 'incumplida'
+  observaciones: string | null
+}
+
+export interface TrainingPlan {
+  id: number
+  trabajador_id: number
+  puesto_id: number
+  evaluacion_id: number | null
+  tipo: 'reevaluacion' | 'nuevo_puesto' | 'reemplazo' | 'manual'
+  estado: 'pendiente' | 'en_progreso' | 'completado' | 'incumplido' | 'cancelado'
+  motivo: string | null
+  fecha_inicio: string
+  fecha_fin: string | null
+  actividades: TrainingActivity[]
 }
 
 export interface ImportIssue { hoja: string; fila: number; error?: string; advertencia?: string }
@@ -363,12 +393,28 @@ export async function updateEvaluation(id: number, data: Record<string, unknown>
   return request<EvaluationItem>(`/api/evaluaciones/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
 }
 
-export async function cancelEvaluation(id: number): Promise<EvaluationItem> {
-  return request<EvaluationItem>(`/api/evaluaciones/${id}/anular`, { method: 'POST' })
+export async function cancelEvaluation(id: number, motivo: string): Promise<EvaluationItem> {
+  return request<EvaluationItem>(`/api/evaluaciones/${id}/anular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo }) })
 }
 
-export async function completeEvaluation(id: number): Promise<void> {
-  await request(`/api/evaluaciones/${id}/completar`, { method: 'POST' })
+export async function enableEvaluationCorrection(id: number, motivo: string): Promise<EvaluationItem> {
+  return request<EvaluationItem>(`/api/evaluaciones/${id}/habilitar-correccion`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo }) })
+}
+
+export async function scheduleNextEvaluation(id: number, fecha: string): Promise<EvaluationItem> {
+  return request<EvaluationItem>(`/api/evaluaciones/${id}/proxima-fecha`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fecha }) })
+}
+
+export async function listTrainingPlans(): Promise<TrainingPlan[]> { return request<TrainingPlan[]>('/api/capacitacion/planes') }
+
+export async function createTrainingPlan(data: Record<string, unknown>): Promise<TrainingPlan> { return request<TrainingPlan>('/api/capacitacion/planes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }) }
+
+export async function completeTrainingActivity(planId: number, activityId: number): Promise<TrainingPlan> { return request<TrainingPlan>(`/api/capacitacion/planes/${planId}/actividades/${activityId}/completar`, { method: 'POST' }) }
+
+export async function rescheduleTrainingActivity(planId: number, activityId: number, fecha: string): Promise<TrainingPlan> { return request<TrainingPlan>(`/api/capacitacion/planes/${planId}/actividades/${activityId}/reprogramar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fecha }) }) }
+
+export async function completeEvaluation(id: number): Promise<EvaluationItem> {
+  return request<EvaluationItem>(`/api/evaluaciones/${id}/completar`, { method: 'POST' })
 }
 
 export async function saveWorker(data: Record<string, unknown>): Promise<WorkerItem> {

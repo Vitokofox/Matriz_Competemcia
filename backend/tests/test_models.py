@@ -42,7 +42,7 @@ def db() -> Session:
 
 
 def test_esquema_contiene_todas_las_tablas() -> None:
-    assert len(Base.metadata.tables) == 26
+    assert len(Base.metadata.tables) == 29
     assert {
         "trabajadores",
         "supervisores",
@@ -101,6 +101,35 @@ def test_un_trabajador_solo_tiene_un_supervisor_activo(db: Session) -> None:
 def test_nivel_aprobado_se_calcula_con_la_nota_minima() -> None:
     assert EvaluacionDetalle(nivel_obtenido=3, nivel_minimo=3).aprobado
     assert not EvaluacionDetalle(nivel_obtenido=2, nivel_minimo=3).aprobado
+
+
+def test_evaluacion_completada_no_se_repite_pero_anulada_si(db: Session) -> None:
+    first = Evaluacion(
+        trabajador_id=1,
+        puesto_id=1,
+        supervisor_id=1,
+        fecha=date.today(),
+        estado="completada",
+    )
+    db.add(first)
+    db.commit()
+
+    duplicate = Evaluacion(
+        trabajador_id=1,
+        puesto_id=1,
+        supervisor_id=1,
+        fecha=date.today(),
+        estado="completada",
+    )
+    db.add(duplicate)
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+
+    duplicate.estado = "anulada"
+    db.add(duplicate)
+    db.commit()
+    assert db.query(Evaluacion).count() == 2
 
 
 def test_consulta_diferencia_expertis_por_puesto(db: Session) -> None:

@@ -1,4 +1,5 @@
-from datetime import UTC, timedelta
+import json
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -16,6 +17,7 @@ from app.api.schemas import (
     CodigoCatalogoCreate,
     CodigoCatalogoResponse,
     CodigoCatalogoUpdate,
+    CorrectionEnableRequest,
     EvaluacionCreate,
     EvaluacionResponse,
     EvaluacionUpdate,
@@ -32,6 +34,9 @@ from app.api.schemas import (
     PersonaCreate,
     PersonaResponse,
     PersonaUpdate,
+    PlanActividadDateUpdate,
+    PlanCapacitacionCreate,
+    PlanCapacitacionResponse,
     ProcesoCreate,
     ProcesoResponse,
     ProcesoUpdate,
@@ -64,6 +69,7 @@ from app.core.security import (
     get_current_user,
     hash_password,
     permissions_for,
+    require_admin,
     require_any_permission,
     verify_password,
 )
@@ -76,10 +82,13 @@ from app.models import (
     Competencia,
     Evaluacion,
     EvaluacionDetalle,
+    EvaluacionVersion,
     Evaluador,
     Maquina,
     MaquinaProceso,
     Permiso,
+    PlanCapacitacion,
+    PlanCapacitacionActividad,
     Proceso,
     Puesto,
     PuestoActividad,
@@ -362,6 +371,54 @@ def register_persona_routes(model, prefix: str):
 
 register_persona_routes(Supervisor, "/supervisores")
 register_persona_routes(Evaluador, "/evaluadores")
+
+
+def sync_authorized_person(
+    db: Session, user: Usuario, model, role_name: str, enabled: bool
+) -> None:
+    """Keep the supervisor/evaluator catalog aligned with user roles."""
+    person = db.query(model).filter_by(usuario_id=user.id).first()
+    if not enabled:
+        if person is not None:
+            person.activo = False
+        return
+
+    if person is None and user.correo:
+        person = db.query(model).filter_by(correo=user.correo).first()
+
+    names = user.nombre_completo.strip().split(maxsplit=1)
+    nombres = names[0] if names else user.username
+    apellidos = names[1] if len(names) > 1 else user.username
+
+    if person is None:
+        document = user.username
+        if db.query(model).filter_by(documento=document).first() is not None:
+            document = f"USR-{user.id}"
+        person = model(
+            codigo=generar_codigo(
+                db, "supervisor" if role_name == "Supervisor" else "evaluador"
+            ),
+            documento=document,
+            nombres=nombres,
+            apellidos=apellidos,
+            correo=user.correo,
+            usuario_id=user.id,
+        )
+        db.add(person)
+    else:
+        person.usuario_id = user.id
+        person.nombres = nombres
+        person.apellidos = apellidos
+        person.correo = user.correo
+        person.activo = True
+
+
+def sync_authorized_people(db: Session, user: Usuario) -> None:
+    role_names = {role.nombre.strip().casefold() for role in user.roles}
+    sync_authorized_person(
+        db, user, Supervisor, "Supervisor", "supervisor" in role_names
+    )
+    sync_authorized_person(db, user, Evaluador, "Evaluador", "evaluador" in role_names)
 
 
 @router.get("/procesos", response_model=list[ProcesoResponse], tags=["procesos"])
@@ -1034,6 +1091,67 @@ def load_evaluation_details(db: Session, evaluation: Evaluacion, details) -> Non
     ]
 
 
+def next_business_day(value: date) -> date:
+    while value.weekday() >= 5:
+        value += timedelta(days=1)
+    return value
+
+
+def next_year_business_day(value: date) -> date:
+    try:
+        next_date = value.replace(year=value.year + 1)
+    except ValueError:
+        next_date = value.replace(year=value.year + 1, day=28)
+    return next_business_day(next_date)
+
+
+def create_training_plan(
+    db: Session,
+    trabajador_id: int,
+    puesto_id: int,
+    tipo: str,
+    fecha_inicio: date,
+    activity_ids: list[int],
+    user_id: int | None,
+    evaluacion_id: int | None = None,
+    motivo: str | None = None,
+) -> PlanCapacitacion:
+    plan = PlanCapacitacion(
+        trabajador_id=trabajador_id,
+        puesto_id=puesto_id,
+        evaluacion_id=evaluacion_id,
+        tipo=tipo,
+        motivo=motivo,
+        fecha_inicio=fecha_inicio,
+        creado_por_usuario_id=user_id,
+    )
+    plan.actividades = [
+        PlanCapacitacionActividad(
+            actividad_id=activity_id,
+            fecha_programada=fecha_inicio + timedelta(days=index),
+        )
+        for index, activity_id in enumerate(dict.fromkeys(activity_ids))
+    ]
+    db.add(plan)
+    return plan
+
+
+def failed_activity_ids(db: Session, evaluation: Evaluacion) -> list[int]:
+    failed_requirement_ids = {
+        detail.requisito_id for detail in evaluation.detalles if not detail.aprobado
+    }
+    if not failed_requirement_ids:
+        return []
+    return [
+        activity_id
+        for (activity_id,) in db.query(PuestoActividad.actividad_id)
+        .join(PuestoActividadCompetencia)
+        .filter(PuestoActividadCompetencia.id.in_(failed_requirement_ids))
+        .distinct()
+        .all()
+    ]
+
+
 @router.post(
     "/evaluaciones",
     response_model=EvaluacionResponse,
@@ -1054,6 +1172,35 @@ def create_evaluation(
             detail="El usuario debe estar vinculado a un supervisor o evaluador activo",
         )
     get_or_404(db, Puesto, payload.puesto_id)
+    pending_training = (
+        db.query(PlanCapacitacion)
+        .filter(
+            PlanCapacitacion.trabajador_id == payload.trabajador_id,
+            PlanCapacitacion.puesto_id == payload.puesto_id,
+            PlanCapacitacion.tipo == "reevaluacion",
+            PlanCapacitacion.estado != "completado",
+        )
+        .first()
+    )
+    if pending_training is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Debe completar el plan de capacitación antes de reevaluar",
+        )
+    existing = (
+        db.query(Evaluacion)
+        .filter(
+            Evaluacion.trabajador_id == payload.trabajador_id,
+            Evaluacion.puesto_id == payload.puesto_id,
+            Evaluacion.estado.in_(["borrador", "completada"]),
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="El trabajador ya tiene una evaluación completada para este puesto",
+        )
     evaluation = Evaluacion(
         trabajador_id=payload.trabajador_id,
         puesto_id=payload.puesto_id,
@@ -1091,12 +1238,48 @@ def get_evaluation(item_id: int, db: Session = Depends(get_db)):
     "/evaluaciones/{item_id}", response_model=EvaluacionResponse, tags=["evaluaciones"]
 )
 def update_evaluation(
-    item_id: int, payload: EvaluacionUpdate, db: Session = Depends(get_db)
+    item_id: int,
+    payload: EvaluacionUpdate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
 ):
     evaluation = get_or_404(db, Evaluacion, item_id)
-    if evaluation.estado != "borrador":
+    correction = (
+        evaluation.estado == "completada"
+        and evaluation.correccion_habilitada_hasta is not None
+        and evaluation.correccion_habilitada_hasta
+        >= datetime.now(UTC).replace(tzinfo=None)
+    )
+    if evaluation.estado != "borrador" and not correction:
         raise HTTPException(
             status_code=409, detail="Solo se pueden editar evaluaciones borrador"
+        )
+    if correction and evaluation.usuario_ejecutor_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="La corrección solo puede realizarla el evaluador original",
+        )
+    if correction:
+        db.add(
+            EvaluacionVersion(
+                evaluacion_id=evaluation.id,
+                version=len(evaluation.versiones) + 1,
+                datos=json.dumps(
+                    {
+                        "fecha": str(evaluation.fecha),
+                        "observaciones": evaluation.observaciones,
+                        "detalles": [
+                            {
+                                "requisito_id": item.requisito_id,
+                                "nivel_obtenido": item.nivel_obtenido,
+                            }
+                            for item in evaluation.detalles
+                        ],
+                    }
+                ),
+                motivo=evaluation.motivo_correccion or "Corrección autorizada",
+                usuario_id=user.id,
+            )
         )
     values = payload.model_dump(exclude_unset=True)
     details = values.pop("detalles", None)
@@ -1129,10 +1312,174 @@ def complete_evaluation(item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=422, detail="La evaluación debe cubrir todos los requisitos"
         )
+    existing = (
+        db.query(Evaluacion)
+        .filter(
+            Evaluacion.id != evaluation.id,
+            Evaluacion.trabajador_id == evaluation.trabajador_id,
+            Evaluacion.puesto_id == evaluation.puesto_id,
+            Evaluacion.estado == "completada",
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="El trabajador ya tiene una evaluación completada para este puesto",
+        )
     evaluation.estado = "completada"
+    failed_activities = failed_activity_ids(db, evaluation)
+    if failed_activities:
+        create_training_plan(
+            db,
+            trabajador_id=evaluation.trabajador_id,
+            puesto_id=evaluation.puesto_id,
+            tipo="reevaluacion",
+            fecha_inicio=date.today(),
+            activity_ids=failed_activities,
+            user_id=evaluation.usuario_ejecutor_id,
+            evaluacion_id=evaluation.id,
+            motivo="Competencias reprobadas en evaluación",
+        )
+    else:
+        evaluation.proxima_fecha = next_year_business_day(evaluation.fecha)
     commit_or_conflict(db)
     db.refresh(evaluation)
     return evaluation
+
+
+@router.get(
+    "/capacitacion/planes",
+    response_model=list[PlanCapacitacionResponse],
+    tags=["capacitacion"],
+)
+def list_training_plans(
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(
+        require_any_permission("capacitacion.consultar", "capacitacion.gestionar")
+    ),
+    estado: str | None = None,
+):
+    del user
+    query = db.query(PlanCapacitacion)
+    if estado:
+        query = query.filter(PlanCapacitacion.estado == estado)
+    return query.order_by(
+        PlanCapacitacion.fecha_inicio.desc(), PlanCapacitacion.id.desc()
+    ).all()
+
+
+@router.post(
+    "/capacitacion/planes",
+    response_model=PlanCapacitacionResponse,
+    status_code=201,
+    tags=["capacitacion"],
+)
+def create_manual_training_plan(
+    payload: PlanCapacitacionCreate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_any_permission("capacitacion.gestionar")),
+):
+    get_or_404(db, Trabajador, payload.trabajador_id)
+    get_or_404(db, Puesto, payload.puesto_id)
+    activity_ids = [item.actividad_id for item in payload.actividades]
+    if len(activity_ids) != len(set(activity_ids)):
+        raise HTTPException(status_code=422, detail="No se puede repetir una actividad")
+    existing = db.query(Actividad).filter(Actividad.id.in_(activity_ids)).count()
+    if existing != len(activity_ids):
+        raise HTTPException(status_code=422, detail="Una o más actividades no existen")
+    plan = create_training_plan(
+        db,
+        trabajador_id=payload.trabajador_id,
+        puesto_id=payload.puesto_id,
+        tipo=payload.tipo,
+        fecha_inicio=payload.fecha_inicio,
+        activity_ids=activity_ids,
+        user_id=user.id,
+        motivo=payload.motivo,
+    )
+    for plan_activity, requested in zip(plan.actividades, payload.actividades):
+        plan_activity.fecha_programada = requested.fecha_programada
+    commit_or_conflict(db)
+    db.refresh(plan)
+    return plan
+
+
+@router.post(
+    "/capacitacion/planes/{plan_id}/actividades/{activity_id}/completar",
+    response_model=PlanCapacitacionResponse,
+    tags=["capacitacion"],
+)
+def complete_training_activity(
+    plan_id: int,
+    activity_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(
+        require_any_permission("capacitacion.gestionar", "evaluaciones.programar")
+    ),
+):
+    plan = get_or_404(db, PlanCapacitacion, plan_id)
+    activity = next((item for item in plan.actividades if item.id == activity_id), None)
+    if activity is None:
+        raise HTTPException(
+            status_code=404, detail="Actividad de capacitación no encontrada"
+        )
+    activity.estado = "completada"
+    activity.fecha_cumplimiento = date.today()
+    activity.completada_por_usuario_id = user.id
+    if all(item.estado == "completada" for item in plan.actividades):
+        plan.estado = "completado"
+        plan.fecha_fin = date.today()
+    else:
+        plan.estado = "en_progreso"
+    commit_or_conflict(db)
+    db.refresh(plan)
+    return plan
+
+
+@router.post(
+    "/capacitacion/planes/{plan_id}/actividades/{activity_id}/reprogramar",
+    response_model=PlanCapacitacionResponse,
+    tags=["capacitacion"],
+)
+def reschedule_training_activity(
+    plan_id: int,
+    activity_id: int,
+    payload: PlanActividadDateUpdate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(
+        require_any_permission("capacitacion.gestionar", "evaluaciones.programar")
+    ),
+):
+    plan = get_or_404(db, PlanCapacitacion, plan_id)
+    activity = next((item for item in plan.actividades if item.id == activity_id), None)
+    if activity is None:
+        raise HTTPException(
+            status_code=404, detail="Actividad de capacitación no encontrada"
+        )
+    if payload.fecha <= date.today():
+        raise HTTPException(status_code=422, detail="La nueva fecha debe ser futura")
+    if activity.fecha_reprogramacion_2 is not None:
+        activity.estado = "incumplida"
+        plan.estado = "incumplido"
+        new_plan = create_training_plan(
+            db,
+            plan.trabajador_id,
+            plan.puesto_id,
+            plan.tipo,
+            date.today() + timedelta(days=1),
+            [item.actividad_id for item in plan.actividades],
+            user.id,
+            motivo="Nuevo plan por incumplimiento de dos fechas",
+        )
+        del new_plan
+    elif activity.fecha_reprogramacion_1 is None:
+        activity.fecha_reprogramacion_1 = payload.fecha
+    else:
+        activity.fecha_reprogramacion_2 = payload.fecha
+    commit_or_conflict(db)
+    db.refresh(plan)
+    return plan
 
 
 @router.post(
@@ -1140,9 +1487,72 @@ def complete_evaluation(item_id: int, db: Session = Depends(get_db)):
     response_model=EvaluacionResponse,
     tags=["evaluaciones"],
 )
-def cancel_evaluation(item_id: int, db: Session = Depends(get_db)):
+def cancel_evaluation(
+    item_id: int,
+    payload: CorrectionEnableRequest,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_admin),
+):
     evaluation = get_or_404(db, Evaluacion, item_id)
+    if evaluation.estado == "anulada":
+        raise HTTPException(status_code=409, detail="La evaluación ya está anulada")
     evaluation.estado = "anulada"
+    evaluation.motivo_anulacion = payload.motivo
+    evaluation.anulada_en = datetime.now(UTC).replace(tzinfo=None)
+    evaluation.anulada_por_usuario_id = user.id
+    commit_or_conflict(db)
+    db.refresh(evaluation)
+    return evaluation
+
+
+@router.post(
+    "/evaluaciones/{item_id}/habilitar-correccion",
+    response_model=EvaluacionResponse,
+    tags=["evaluaciones"],
+)
+def enable_evaluation_correction(
+    item_id: int,
+    payload: CorrectionEnableRequest,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_admin),
+):
+    evaluation = get_or_404(db, Evaluacion, item_id)
+    if evaluation.estado != "completada":
+        raise HTTPException(
+            status_code=409, detail="Solo se puede corregir una evaluación completada"
+        )
+    evaluation.correccion_habilitada_hasta = datetime.now(UTC).replace(
+        tzinfo=None
+    ) + timedelta(hours=36)
+    evaluation.correccion_habilitada_por_id = user.id
+    evaluation.motivo_correccion = payload.motivo
+    commit_or_conflict(db)
+    db.refresh(evaluation)
+    return evaluation
+
+
+@router.patch(
+    "/evaluaciones/{item_id}/proxima-fecha",
+    response_model=EvaluacionResponse,
+    tags=["evaluaciones"],
+)
+def schedule_next_evaluation(
+    item_id: int,
+    payload: PlanActividadDateUpdate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(require_any_permission("evaluaciones.programar")),
+):
+    evaluation = get_or_404(db, Evaluacion, item_id)
+    if evaluation.estado != "completada":
+        raise HTTPException(
+            status_code=409, detail="Solo se puede programar una evaluación completada"
+        )
+    today = date.today()
+    if payload.fecha < today or payload.fecha > today + timedelta(days=15):
+        raise HTTPException(
+            status_code=422, detail="La fecha debe estar dentro de los próximos 15 días"
+        )
+    evaluation.proxima_fecha = payload.fecha
     commit_or_conflict(db)
     db.refresh(evaluation)
     return evaluation
@@ -1220,6 +1630,8 @@ def create_user(
         roles=roles,
     )
     db.add(item)
+    db.flush()
+    sync_authorized_people(db, item)
     commit_or_conflict(db)
     db.refresh(item)
     return item
@@ -1293,6 +1705,7 @@ def update_user(
         item.roles = roles
     for key, value in values.items():
         setattr(item, key, value)
+    sync_authorized_people(db, item)
     commit_or_conflict(db)
     db.refresh(item)
     return item
