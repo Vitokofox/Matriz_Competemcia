@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SchemaBase(BaseModel):
@@ -33,6 +33,28 @@ class CodigoCatalogoCreate(CatalogoBase):
     codigo: str | None = Field(default=None, min_length=1, max_length=50)
 
 
+class CompetenciaCreate(CodigoCatalogoCreate):
+    dimension: str = Field(
+        default="tecnica",
+        pattern="^(tecnica|conductual|seguridad|calidad|coordinacion)$",
+    )
+    critica: bool = False
+    nivel_sugerido: int = Field(default=3, ge=0, le=4)
+
+
+class CompetenciaUpdate(BaseModel):
+    codigo: str | None = Field(default=None, min_length=1, max_length=50)
+    nombre: str | None = Field(default=None, min_length=1, max_length=150)
+    descripcion: str | None = None
+    dimension: str | None = Field(
+        default=None,
+        pattern="^(tecnica|conductual|seguridad|calidad|coordinacion)$",
+    )
+    critica: bool | None = None
+    nivel_sugerido: int | None = Field(default=None, ge=0, le=4)
+    activo: bool | None = None
+
+
 class CodigoCatalogoUpdate(BaseModel):
     codigo: str | None = Field(default=None, min_length=1, max_length=50)
     nombre: str | None = Field(default=None, min_length=1, max_length=150)
@@ -42,6 +64,13 @@ class CodigoCatalogoUpdate(BaseModel):
 
 class CodigoCatalogoResponse(SchemaBase, CodigoCatalogoCreate):
     id: int
+    creado_en: datetime
+    actualizado_en: datetime
+
+
+class CompetenciaResponse(SchemaBase, CompetenciaCreate):
+    id: int
+    activo: bool
     creado_en: datetime
     actualizado_en: datetime
 
@@ -180,12 +209,25 @@ class ChecklistCompetenciaResponse(BaseModel):
     competencia_id: int
     competencia: str
     nivel_minimo: int
+    dimension: str
+    critica: bool
+
+
+class ChecklistCriterioResponse(BaseModel):
+    puesto_criterio_id: int
+    descripcion: str
+    referencia: str | None
+    critico: bool
+    obligatorio: bool
+    competencias: list[ChecklistCompetenciaResponse]
+    indicadores: list[str]
 
 
 class ChecklistActividadResponse(BaseModel):
     actividad_id: int
     actividad: str
     competencias: list[ChecklistCompetenciaResponse]
+    criterios: list[ChecklistCriterioResponse]
 
 
 class HistorialResponse(SchemaBase):
@@ -247,10 +289,103 @@ class PuestoActividadCreate(BaseModel):
     actividad_id: int
 
 
+class ActividadCriterioCreate(BaseModel):
+    descripcion: str = Field(min_length=1)
+    referencia: str | None = Field(default=None, max_length=100)
+    orden: int = Field(default=0, ge=0)
+    critico: bool = False
+    activo: bool = True
+
+
+class FichaCriterioCreate(ActividadCriterioCreate):
+    competencia_ids: list[int] = []
+
+
+class FichaCompetenciaPuestoCreate(BaseModel):
+    competencia_id: int
+    nivel_minimo: int = Field(ge=0, le=4)
+
+
+class FichaPuestoCreate(BaseModel):
+    puesto_id: int
+    competencias: list[FichaCompetenciaPuestoCreate] = []
+
+
+class FichaOperativaCreate(BaseModel):
+    nombre: str = Field(min_length=1, max_length=150)
+    descripcion: str | None = None
+    punto_procedimiento: str | None = Field(default=None, max_length=100)
+    referencia: str | None = Field(default=None, max_length=100)
+    orden: int = Field(default=0, ge=0)
+    area_ids: list[int] = []
+    maquina_ids: list[int] = []
+    criterios: list[FichaCriterioCreate] = []
+    puestos: list[FichaPuestoCreate] = []
+
+
+class FichaOperativaResponse(SchemaBase):
+    actividad_id: int
+    actividad: str
+    criterios_creados: int
+    areas_asociadas: int
+    maquinas_asociadas: int
+    puestos_asociados: int
+    requisitos_creados: int
+
+
+class PerfilRoleConfig(BaseModel):
+    enabled: bool = True
+    position_id: int | None = None
+    general_level: int = Field(ge=0, le=4)
+    safety_level: int = Field(ge=3, le=4)
+
+
+class PerfilDestinationConfig(BaseModel):
+    machine_id: int
+    equipment_label: str | None = None
+    roles: dict[str, PerfilRoleConfig]
+
+
+class PerfilActivityConfig(BaseModel):
+    included_roles: list[str]
+
+
+class PerfilCriterionConfig(BaseModel):
+    included_roles: list[str]
+    required: bool = True
+    critical: bool = False
+    macro_keys: list[str]
+
+
+class PerfilImportConfig(BaseModel):
+    destinations: list[PerfilDestinationConfig] = Field(min_length=1)
+    activities: dict[str, PerfilActivityConfig]
+    criteria: dict[str, PerfilCriterionConfig]
+
+
+class ActividadCriterioUpdate(BaseModel):
+    descripcion: str | None = Field(default=None, min_length=1)
+    referencia: str | None = Field(default=None, max_length=100)
+    orden: int | None = Field(default=None, ge=0)
+    critico: bool | None = None
+    activo: bool | None = None
+
+
+class ActividadCriterioResponse(SchemaBase, ActividadCriterioCreate):
+    id: int
+    actividad_id: int
+    creado_en: datetime
+    actualizado_en: datetime
+
+
 class RequisitoCreate(BaseModel):
     actividad_id: int
     competencia_id: int
-    nivel_minimo: int = Field(ge=1, le=5)
+    nivel_minimo: int = Field(ge=0, le=4)
+
+
+class RequisitoUpdate(BaseModel):
+    nivel_minimo: int = Field(ge=0, le=4)
 
 
 class RequisitoResponse(SchemaBase):
@@ -262,9 +397,35 @@ class RequisitoResponse(SchemaBase):
     actualizado_en: datetime
 
 
+class EvaluacionCriterioCreate(BaseModel):
+    puesto_criterio_id: int
+    nivel_obtenido: int = Field(ge=0, le=4)
+    observaciones: str | None = None
+    evidencia: str | None = None
+
+    @model_validator(mode="after")
+    def require_evidence_for_gap(self):
+        if self.nivel_obtenido < 3 and not (self.evidencia or self.observaciones):
+            raise ValueError("Los niveles 0, 1 y 2 requieren evidencia u observación")
+        return self
+
+
+class EvaluacionCriterioResponse(SchemaBase, EvaluacionCriterioCreate):
+    id: int
+    evaluacion_id: int
+    critico_incumplido: bool
+    actividad_nombre: str
+    criterio_descripcion: str
+    referencia: str | None
+    orden: int
+    critico: bool
+    creado_en: datetime
+    actualizado_en: datetime
+
+
 class EvaluacionDetalleCreate(BaseModel):
     requisito_id: int
-    nivel_obtenido: int = Field(ge=1, le=5)
+    nivel_obtenido: int = Field(ge=0, le=4)
     observaciones: str | None = None
 
 
@@ -282,14 +443,14 @@ class EvaluacionCreate(BaseModel):
     puesto_id: int
     fecha: date
     observaciones: str | None = None
-    detalles: list[EvaluacionDetalleCreate] = Field(min_length=1)
+    criterios: list[EvaluacionCriterioCreate] = Field(min_length=1)
     proxima_fecha: date | None = None
 
 
 class EvaluacionUpdate(BaseModel):
     fecha: date | None = None
     observaciones: str | None = None
-    detalles: list[EvaluacionDetalleCreate] | None = Field(default=None, min_length=1)
+    criterios: list[EvaluacionCriterioCreate] | None = None
     proxima_fecha: date | None = None
 
 
@@ -300,6 +461,7 @@ class EvaluacionResponse(SchemaBase):
     supervisor_id: int | None
     usuario_ejecutor_id: int | None
     puesto_id: int
+    matriz_version_id: int | None
     fecha: date
     estado: str
     observaciones: str | None
@@ -308,7 +470,10 @@ class EvaluacionResponse(SchemaBase):
     motivo_correccion: str | None
     motivo_anulacion: str | None
     anulada_en: datetime | None
+    resultado: str | None
+    vigente: bool
     detalles: list[EvaluacionDetalleResponse]
+    criterios: list[EvaluacionCriterioResponse]
     creado_en: datetime
     actualizado_en: datetime
 

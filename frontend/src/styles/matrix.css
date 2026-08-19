@@ -1,2 +1,40 @@
 .position-picker { border-color: var(--color-border-strong); background: var(--color-surface-muted); }
 .checklist-activity { background: var(--color-surface); }
+.matrix-toolbar { margin: 1.25rem 0; }
+.matrix-toolbar select, .criteria-editor > select { width: 100%; }
+.matrix-add-form, .criteria-editor { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-surface-muted); }
+.matrix-add-form h3, .criteria-editor h3 { margin: 0; }
+.matrix-tree { display: grid; gap: 1rem; margin-top: 1.25rem; }
+.matrix-node { padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-surface); }
+.matrix-node-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; margin-bottom: 1rem; }
+.matrix-node-heading h3 { margin: .2rem 0 0; }
+.matrix-table .table-row { align-items: center; }
+.matrix-table select { max-width: 10rem; }
+.criteria-list { display: grid; gap: .5rem; margin: 1rem 0; }
+.criteria-item { display: grid; grid-template-columns: 1fr auto auto; gap: .75rem; align-items: center; padding: .7rem; border-left: 3px solid var(--brand-green-600); background: var(--color-surface-muted); }
+.criteria-item small { color: var(--color-text-muted); }
+.criteria-editor { margin-top: 1.5rem; }
+.dimension-badge { color: var(--brand-green-600); font-weight: 600; }
+.check-option { display: flex; align-items: center; gap: .5rem; }
+.check-option input { width: auto; }
+.empty-state { padding: 1rem; color: var(--color-text-muted); background: var(--color-surface-muted); border-radius: .5rem; }
+.operational-wizard { display: grid; gap: 1rem; }
+.wizard-section { padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .75rem; background: var(--color-surface); }
+.wizard-title { display: flex; gap: .75rem; align-items: center; margin-bottom: 1rem; }
+.wizard-title > span { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; color: var(--color-text-inverse); background: var(--brand-green-600); font-weight: 700; }
+.wizard-title h3 { margin: .15rem 0 0; }
+.wizard-section label { display: grid; gap: .35rem; flex: 1; }
+.wizard-section select[multiple] { min-height: 7rem; }
+.criterion-draft, .position-draft { display: grid; gap: .75rem; margin-bottom: .9rem; padding: .9rem; border: 1px solid var(--color-border); border-radius: .5rem; background: var(--color-surface-muted); }
+.position-draft > div:first-child { display: flex; justify-content: space-between; align-items: center; }
+.text-action { padding: 0; border: 0; color: var(--brand-orange-600); background: transparent; cursor: pointer; }
+.competency-level-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .65rem; }
+.competency-level-grid label { display: flex; flex-direction: row; justify-content: space-between; gap: .5rem; padding: .6rem; border: 1px solid var(--color-border); border-radius: .4rem; background: var(--color-surface); }
+.competency-level-grid small { display: block; color: var(--color-text-muted); }
+.competency-level-grid select { width: auto; max-width: 6rem; }
+@media (max-width: 720px) {
+  .matrix-node-heading { flex-direction: column; }
+  .criteria-item { grid-template-columns: 1fr; }
+  .matrix-table .table-row { min-width: 40rem; }
+  .wizard-section .form-line { flex-direction: column; }
+}

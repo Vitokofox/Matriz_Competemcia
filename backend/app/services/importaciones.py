@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Actividad,
+    ActividadCriterio,
+    ActividadCriterioCompetencia,
     Area,
     AsignacionLaboral,
     Cargo,
@@ -35,7 +37,22 @@ SHEETS: dict[str, tuple[str, ...]] = {
     "procesos": ("nombre", "descripcion", "area", "activo"),
     "maquinas": ("nombre", "descripcion", "proceso", "fecha_inicio", "activo"),
     "actividades": ("nombre", "descripcion", "activo"),
-    "competencias": ("nombre", "descripcion", "activo"),
+    "competencias": (
+        "nombre",
+        "descripcion",
+        "dimension",
+        "critica",
+        "nivel_sugerido",
+        "activo",
+    ),
+    "criterios_actividad": (
+        "actividad",
+        "descripcion",
+        "referencia",
+        "orden",
+        "critico",
+        "activo",
+    ),
     "puestos": (
         "nombre",
         "descripcion",
@@ -72,6 +89,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "maquinas": ("nombre",),
     "actividades": ("nombre",),
     "competencias": ("nombre",),
+    "criterios_actividad": ("actividad", "descripcion"),
     "puestos": ("nombre", "area", "cargo", "tipo_puesto"),
     "requisitos_puesto": ("puesto", "actividad", "competencia", "nivel_minimo"),
     "supervisores": ("documento", "nombres", "apellidos"),
@@ -104,7 +122,22 @@ def create_template() -> bytes:
             True,
         ],
         "actividades": ["Preparar máquina", "Preparación segura", True],
-        "competencias": ["Seguridad operacional", "Trabajo seguro", True],
+        "competencias": [
+            "Seguridad operacional",
+            "Trabajo seguro",
+            "seguridad",
+            True,
+            4,
+            True,
+        ],
+        "criterios_actividad": [
+            "Preparar máquina",
+            "Verifica la condición segura antes de iniciar",
+            "Pág. 1",
+            0,
+            False,
+            True,
+        ],
         "puestos": [
             "Operador de torno",
             "Puesto de ejemplo",
@@ -246,11 +279,153 @@ def read_rows(
                 record["__fila__"] = row_number
                 records.append(record)
             rows[sheet_name] = records
+    if {
+        "Perfil Operador Principal",
+        "Criterios individualizados",
+    }.issubset(workbook.sheetnames):
+        _append_operator_workbook(rows, workbook)
     workbook.close()
     return rows, errors
 
 
-def validate_import(content: bytes, db: Session) -> dict[str, Any]:
+def _split_competencies(value: Any) -> list[str]:
+    return [
+        item.strip().rstrip(".") for item in str(value or "").split(";") if item.strip()
+    ]
+
+
+def _is_critical(value: Any) -> bool:
+    text = str(value or "").casefold()
+    return any(
+        token in text
+        for token in ("bloqueo", "pts", "arnés", "anticorte", "izaje", "barrera")
+    )
+
+
+def _append_operator_workbook(rows: dict[str, list[dict[str, Any]]], workbook) -> None:
+    profile = list(workbook["Perfil Operador Principal"].values)[4:]
+    criteria = list(workbook["Criterios individualizados"].values)[4:]
+    area = "Operación Línea Principal"
+    cargo = "Operador"
+    position = "Operador Línea Principal"
+    rows.setdefault("areas", []).append(
+        {
+            "nombre": area,
+            "descripcion": "Área importada desde el perfil operativo",
+            "activo": True,
+            "__fila__": 0,
+        }
+    )
+    rows.setdefault("cargos", []).append(
+        {
+            "nombre": cargo,
+            "descripcion": "Cargo del perfil operativo",
+            "activo": True,
+            "__fila__": 0,
+        }
+    )
+    rows.setdefault("puestos", []).append(
+        {
+            "nombre": position,
+            "descripcion": (
+                "Perfil importado desde Analisis_Puesto_Operador_Linea_Principal"
+            ),
+            "area": area,
+            "proceso": None,
+            "cargo": cargo,
+            "maquina": None,
+            "tipo_puesto": "operador",
+            "activo": True,
+            "__fila__": 0,
+        }
+    )
+    activities: dict[str, dict[str, Any]] = {}
+    competencies: dict[str, dict[str, Any]] = {}
+    for row in profile:
+        if not row[2]:
+            continue
+        activity = str(row[2]).strip()
+        activities.setdefault(
+            activity,
+            {
+                "nombre": activity,
+                "descripcion": str(row[1] or ""),
+                "activo": True,
+                "__fila__": 0,
+            },
+        )
+        for dimension, column in (("tecnica", 4), ("conductual", 5), ("seguridad", 6)):
+            for name in _split_competencies(row[column]):
+                competencies.setdefault(
+                    name,
+                    {
+                        "nombre": name,
+                        "descripcion": None,
+                        "dimension": dimension,
+                        "critica": dimension == "seguridad",
+                        "nivel_sugerido": 4 if dimension == "seguridad" else 3,
+                        "activo": True,
+                        "__fila__": 0,
+                    },
+                )
+    rows.setdefault("actividades", []).extend(activities.values())
+    rows.setdefault("competencias", []).extend(competencies.values())
+    criterion_rows = rows.setdefault("criterios_actividad", [])
+    requirement_rows = rows.setdefault("requisitos_puesto", [])
+    for row in criteria:
+        if not row[2] or not row[3]:
+            continue
+        activity = str(row[2]).strip()
+        description = str(row[3]).strip()
+        criterion_rows.append(
+            {
+                "actividad": activity,
+                "descripcion": description,
+                "referencia": str(row[7] or "").strip() or None,
+                "orden": len(
+                    [item for item in criterion_rows if item["actividad"] == activity]
+                ),
+                "critico": _is_critical(row[6]),
+                "activo": True,
+                "competencia_nombres": [
+                    name
+                    for column in (4, 5, 6)
+                    for name in _split_competencies(row[column])
+                ],
+                "__fila__": 0,
+            }
+        )
+        for dimension, column in (("tecnica", 4), ("conductual", 5), ("seguridad", 6)):
+            for name in _split_competencies(row[column]):
+                requirement_rows.append(
+                    {
+                        "puesto": position,
+                        "actividad": activity,
+                        "competencia": name,
+                        "nivel_minimo": 4 if dimension == "seguridad" else 3,
+                        "__fila__": 0,
+                    }
+                )
+
+    unique_requirements: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in requirement_rows:
+        key = (str(row["actividad"]), str(row["competencia"]))
+        current = unique_requirements.get(key)
+        if current is None or int(row["nivel_minimo"]) > int(current["nivel_minimo"]):
+            unique_requirements[key] = row
+    rows["requisitos_puesto"] = list(unique_requirements.values())
+
+
+def validate_import(
+    content: bytes, db: Session, machine_id: int | None = None
+) -> dict[str, Any]:
+    from app.services.importacion_perfil_operador import (
+        is_operator_profile,
+        validate_operator_profile,
+    )
+
+    if is_operator_profile(content):
+        return validate_operator_profile(content, db, machine_id)
     try:
         rows, errors = read_rows(content)
     except Exception as exc:
@@ -265,6 +440,14 @@ def validate_import(content: bytes, db: Session) -> dict[str, Any]:
             ],
             "resumen": {},
         }
+    if not rows and not errors:
+        errors.append(
+            {
+                "hoja": "archivo",
+                "fila": 0,
+                "error": "El archivo no contiene hojas reconocidas para importación",
+            }
+        )
     warnings: list[dict[str, Any]] = []
     summary = {sheet: {"nuevos": 0, "actualizar": 0, "omitir": 0} for sheet in rows}
     refs = {
@@ -329,9 +512,9 @@ def validate_import(content: bytes, db: Session) -> dict[str, Any]:
                         _date(row["fecha_inicio"])
                 if (
                     sheet == "requisitos_puesto"
-                    and not 1 <= int(row["nivel_minimo"]) <= 5
+                    and not 0 <= int(row["nivel_minimo"]) <= 4
                 ):
-                    raise ValueError("nivel_minimo debe estar entre 1 y 5")
+                    raise ValueError("nivel_minimo debe estar entre 0 y 4")
             except (ValueError, TypeError) as exc:
                 errors.append(
                     {"hoja": sheet, "fila": row["__fila__"], "error": str(exc)}
@@ -361,6 +544,7 @@ def validate_import(content: bytes, db: Session) -> dict[str, Any]:
                     ("actividad", Actividad, "nombre"),
                     ("competencia", Competencia, "nombre"),
                 ),
+                "criterios_actividad": (("actividad", Actividad, "nombre"),),
                 "asignaciones_trabajador": (
                     ("trabajador_documento", Trabajador, "documento"),
                     ("cargo", Cargo, "nombre"),
@@ -425,7 +609,13 @@ def _upsert(
     created = False
     if not item:
         data = {
-            field: _text(row.get(field))
+            field: (
+                int(row.get(field))
+                if field == "nivel_sugerido" and row.get(field) is not None
+                else _bool(row[field])
+                if field in {"activo", "critica"} and row.get(field) is not None
+                else _text(row.get(field))
+            )
             for field in fields
             if _text(row.get(field)) is not None
         }
@@ -441,11 +631,35 @@ def _upsert(
         for field in fields:
             value = _text(row.get(field))
             if value is not None:
-                setattr(item, field, _bool(value) if field == "activo" else value)
+                setattr(
+                    item,
+                    field,
+                    (
+                        int(row[field])
+                        if field == "nivel_sugerido"
+                        else _bool(value)
+                        if field in {"activo", "critica"}
+                        else value
+                    ),
+                )
     return item, True, created
 
 
-def execute_import(content: bytes, db: Session, skip_existing: bool) -> dict[str, Any]:
+def execute_import(
+    content: bytes,
+    db: Session,
+    skip_existing: bool,
+    machine_id: int | None = None,
+    user_id: int | None = None,
+    source_name: str = "archivo.xlsx",
+) -> dict[str, Any]:
+    from app.services.importacion_perfil_operador import (
+        execute_operator_profile,
+        is_operator_profile,
+    )
+
+    if is_operator_profile(content):
+        return execute_operator_profile(content, db, machine_id, user_id, source_name)
     validation = validate_import(content, db)
     if not validation["valido"]:
         return validation
@@ -478,9 +692,59 @@ def execute_import(content: bytes, db: Session, skip_existing: bool) -> dict[str
         "competencias",
         Competencia,
         "nombre",
-        ("nombre", "descripcion", "activo"),
+        (
+            "nombre",
+            "descripcion",
+            "dimension",
+            "critica",
+            "nivel_sugerido",
+            "activo",
+        ),
         "competencia",
     )
+    for row in rows.get("criterios_actividad", []):
+        activity = _find(db, Actividad, "nombre", _text(row["actividad"]))
+        existing = (
+            db.query(ActividadCriterio)
+            .filter_by(actividad_id=activity.id, descripcion=_text(row["descripcion"]))
+            .first()
+        )
+        if existing and skip_existing:
+            continue
+        if existing is None:
+            existing = ActividadCriterio(
+                actividad_id=activity.id,
+                descripcion=_text(row["descripcion"]),
+                referencia=_text(row.get("referencia")),
+                orden=int(row.get("orden") or 0),
+                critico=_bool(row.get("critico", False)),
+                activo=_bool(row.get("activo", True)),
+            )
+            db.add(existing)
+            db.flush()
+            for name in row.get("competencia_nombres", []):
+                competency = _find(db, Competencia, "nombre", name)
+                if competency:
+                    db.add(
+                        ActividadCriterioCompetencia(
+                            criterio_id=existing.id, competencia_id=competency.id
+                        )
+                    )
+        else:
+            for field in ("referencia", "orden", "critico", "activo"):
+                value = row.get(field)
+                if value is not None:
+                    setattr(
+                        existing,
+                        field,
+                        int(value)
+                        if field == "orden"
+                        else (
+                            _bool(value)
+                            if field in {"critico", "activo"}
+                            else _text(value)
+                        ),
+                    )
     process(
         "supervisores",
         Supervisor,
@@ -539,11 +803,19 @@ def execute_import(content: bytes, db: Session, skip_existing: bool) -> dict[str
                 )
             )
     for row in rows.get("puestos", []):
+        area = _find(db, Area, "nombre", _text(row["area"]))
+        cargo = _find(db, Cargo, "nombre", _text(row["cargo"]))
+        process = _find(db, Proceso, "nombre", _text(row.get("proceso")))
+        machine = _find(db, Maquina, "nombre", _text(row.get("maquina")))
         data = {
             "nombre": _text(row["nombre"]),
             "descripcion": _text(row.get("descripcion")),
             "tipo_puesto": _text(row["tipo_puesto"]),
             "activo": _bool(row.get("activo", True)),
+            "area_id": area.id,
+            "cargo_id": cargo.id,
+            "proceso_id": process.id if process else None,
+            "maquina_id": machine.id if machine else None,
         }
         item = _find(db, Puesto, "nombre", data["nombre"])
         if not item:
@@ -556,16 +828,15 @@ def execute_import(content: bytes, db: Session, skip_existing: bool) -> dict[str
             for key, value in data.items():
                 if value is not None:
                     setattr(item, key, value)
-        item.area_id = _find(db, Area, "nombre", _text(row["area"])).id
-        item.cargo_id = _find(db, Cargo, "nombre", _text(row["cargo"])).id
-        process = _find(db, Proceso, "nombre", _text(row.get("proceso")))
-        item.proceso_id = process.id if process else None
-        machine = _find(db, Maquina, "nombre", _text(row.get("maquina")))
-        item.maquina_id = machine.id if machine else None
+    processed_requirements: set[tuple[int, int, int]] = set()
     for row in rows.get("requisitos_puesto", []):
         position = _find(db, Puesto, "nombre", _text(row["puesto"]))
         activity = _find(db, Actividad, "nombre", _text(row["actividad"]))
         competency = _find(db, Competencia, "nombre", _text(row["competencia"]))
+        requirement_key = (position.id, activity.id, competency.id)
+        if requirement_key in processed_requirements:
+            continue
+        processed_requirements.add(requirement_key)
         assignment = (
             db.query(PuestoActividad)
             .filter_by(puesto_id=position.id, actividad_id=activity.id)

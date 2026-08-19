@@ -4,15 +4,14 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,7 +20,12 @@ from app.db.session import Base
 from app.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.catalogos import Puesto, PuestoActividadCompetencia
+    from app.models.catalogos import (
+        MatrizPuestoVersion,
+        Puesto,
+        PuestoActividadCompetencia,
+        PuestoActividadCriterio,
+    )
     from app.models.personas import Evaluador, Supervisor, Trabajador
     from app.models.seguridad import Usuario
 
@@ -36,13 +40,6 @@ class Evaluacion(TimestampMixin, Base):
         CheckConstraint(
             "(supervisor_id IS NOT NULL) != (evaluador_id IS NOT NULL)",
             name="ejecutor_autorizado",
-        ),
-        Index(
-            "uq_evaluacion_trabajador_puesto_completada",
-            "trabajador_id",
-            "puesto_id",
-            unique=True,
-            sqlite_where=text("estado = 'completada'"),
         ),
     )
 
@@ -62,6 +59,9 @@ class Evaluacion(TimestampMixin, Base):
     puesto_id: Mapped[int] = mapped_column(
         ForeignKey("puestos.id", ondelete="RESTRICT")
     )
+    matriz_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("matriz_puesto_versiones.id", ondelete="RESTRICT")
+    )
     fecha: Mapped[date] = mapped_column(Date)
     proxima_fecha: Mapped[date | None] = mapped_column(Date)
     estado: Mapped[str] = mapped_column(
@@ -74,15 +74,21 @@ class Evaluacion(TimestampMixin, Base):
     motivo_anulacion: Mapped[str | None] = mapped_column(Text)
     anulada_en: Mapped[datetime | None]
     anulada_por_usuario_id: Mapped[int | None] = mapped_column(Integer)
+    resultado: Mapped[str | None] = mapped_column(String(20))
+    vigente: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     trabajador: Mapped[Trabajador] = relationship()
     evaluador: Mapped[Evaluador] = relationship()
     supervisor: Mapped[Supervisor] = relationship()
     usuario_ejecutor: Mapped[Usuario] = relationship(foreign_keys=[usuario_ejecutor_id])
     puesto: Mapped[Puesto] = relationship()
+    matriz_version: Mapped[MatrizPuestoVersion | None] = relationship()
     detalles: Mapped[list[EvaluacionDetalle]] = relationship(
         back_populates="evaluacion",
         cascade="all, delete-orphan",
+    )
+    criterios: Mapped[list[EvaluacionCriterio]] = relationship(
+        back_populates="evaluacion", cascade="all, delete-orphan"
     )
     versiones: Mapped[list[EvaluacionVersion]] = relationship(
         back_populates="evaluacion", cascade="all, delete-orphan"
@@ -92,8 +98,8 @@ class Evaluacion(TimestampMixin, Base):
 class EvaluacionDetalle(TimestampMixin, Base):
     __tablename__ = "evaluacion_detalles"
     __table_args__ = (
-        CheckConstraint("nivel_obtenido BETWEEN 1 AND 5", name="nivel_obtenido_1_5"),
-        CheckConstraint("nivel_minimo BETWEEN 1 AND 5", name="nivel_minimo_1_5"),
+        CheckConstraint("nivel_obtenido BETWEEN 0 AND 4", name="nivel_obtenido_0_4"),
+        CheckConstraint("nivel_minimo BETWEEN 0 AND 4", name="nivel_minimo_0_4"),
         UniqueConstraint("evaluacion_id", "requisito_id", name="evaluacion_requisito"),
     )
 
@@ -119,6 +125,38 @@ class EvaluacionDetalle(TimestampMixin, Base):
     @classmethod
     def _aprobado_expression(cls):
         return cls.nivel_obtenido >= cls.nivel_minimo
+
+
+class EvaluacionCriterio(TimestampMixin, Base):
+    __tablename__ = "evaluacion_criterios"
+    __table_args__ = (
+        CheckConstraint("nivel_obtenido BETWEEN 0 AND 4", name="nivel_criterio_0_4"),
+        UniqueConstraint(
+            "evaluacion_id", "puesto_criterio_id", name="evaluacion_puesto_criterio"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    evaluacion_id: Mapped[int] = mapped_column(
+        ForeignKey("evaluaciones.id", ondelete="CASCADE")
+    )
+    puesto_criterio_id: Mapped[int] = mapped_column(
+        ForeignKey("puesto_actividad_criterios.id", ondelete="RESTRICT")
+    )
+    nivel_obtenido: Mapped[int] = mapped_column(Integer)
+    observaciones: Mapped[str | None] = mapped_column(Text)
+    evidencia: Mapped[str | None] = mapped_column(Text)
+    actividad_nombre: Mapped[str] = mapped_column(String(150))
+    criterio_descripcion: Mapped[str] = mapped_column(Text)
+    referencia: Mapped[str | None] = mapped_column(String(100))
+    orden: Mapped[int] = mapped_column(Integer)
+    critico: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    critico_incumplido: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+
+    evaluacion: Mapped[Evaluacion] = relationship(back_populates="criterios")
+    puesto_criterio: Mapped[PuestoActividadCriterio] = relationship()
 
 
 class EvaluacionVersion(TimestampMixin, Base):

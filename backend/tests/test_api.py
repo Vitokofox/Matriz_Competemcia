@@ -133,6 +133,109 @@ def test_puesto_requiere_cargo_y_area(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_matriz_permite_criterios_y_edicion_de_nivel(client: TestClient) -> None:
+    area = client.post("/api/areas", json={"nombre": "Producción"}).json()
+    cargo = client.post("/api/cargos", json={"nombre": "Operador"}).json()
+    position = client.post(
+        "/api/puestos",
+        json={
+            "nombre": "Operador Principal",
+            "cargo_id": cargo["id"],
+            "area_id": area["id"],
+        },
+    ).json()
+    activity = client.post(
+        "/api/actividades", json={"nombre": "Inspeccionar línea"}
+    ).json()
+    competency = client.post(
+        "/api/competencias",
+        json={
+            "nombre": "Bloqueo seguro",
+            "dimension": "seguridad",
+            "critica": True,
+            "nivel_sugerido": 4,
+        },
+    ).json()
+
+    criterion = client.post(
+        f"/api/actividades/{activity['id']}/criterios",
+        json={
+            "descripcion": "Verifica el bloqueo antes de intervenir",
+            "critico": True,
+        },
+    )
+    assert criterion.status_code == 201
+    assert (
+        client.post(
+            f"/api/puestos/{position['id']}/actividades",
+            json={"actividad_id": activity["id"]},
+        ).status_code
+        == 201
+    )
+    requirement = client.post(
+        f"/api/puestos/{position['id']}/requisitos",
+        json={
+            "actividad_id": activity["id"],
+            "competencia_id": competency["id"],
+            "nivel_minimo": 3,
+        },
+    ).json()
+
+    updated = client.patch(
+        f"/api/puestos/requisitos/{requirement['id']}", json={"nivel_minimo": 4}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["nivel_minimo"] == 4
+    checklist = client.get(f"/api/puestos/{position['id']}/checklist")
+    assert checklist.status_code == 200
+    assert checklist.json()["actividades"][0]["criterios"][0]["critico"] is True
+    assert (
+        checklist.json()["actividades"][0]["competencias"][0]["dimension"]
+        == "seguridad"
+    )
+
+
+def test_ficha_operativa_crea_contexto_criterios_y_puestos(client: TestClient) -> None:
+    area = client.post("/api/areas", json={"nombre": "Área Principal"}).json()
+    machine = client.post("/api/maquinas", json={"nombre": "Máquina 01"}).json()
+    cargo = client.post("/api/cargos", json={"nombre": "Operador"}).json()
+    position = client.post(
+        "/api/puestos",
+        json={"nombre": "Operador 01", "cargo_id": cargo["id"], "area_id": area["id"]},
+    ).json()
+    competency = client.post(
+        "/api/competencias",
+        json={"nombre": "Inspección segura", "dimension": "seguridad", "critica": True},
+    ).json()
+    response = client.post(
+        "/api/fichas-operativas",
+        json={
+            "nombre": "Inspeccionar máquina 01",
+            "area_ids": [area["id"]],
+            "maquina_ids": [machine["id"]],
+            "criterios": [
+                {
+                    "descripcion": "Verifica el estado seguro",
+                    "critico": True,
+                    "competencia_ids": [competency["id"]],
+                }
+            ],
+            "puestos": [
+                {
+                    "puesto_id": position["id"],
+                    "competencias": [
+                        {"competencia_id": competency["id"], "nivel_minimo": 4}
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["criterios_creados"] == 1
+    checklist = client.get(f"/api/puestos/{position['id']}/checklist").json()
+    assert checklist["actividades"][0]["actividad"] == "Inspeccionar máquina 01"
+
+
 def test_login_carga_permisos_del_usuario(client: TestClient) -> None:
     login = client.post(
         "/api/auth/login",

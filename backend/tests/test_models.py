@@ -42,7 +42,7 @@ def db() -> Session:
 
 
 def test_esquema_contiene_todas_las_tablas() -> None:
-    assert len(Base.metadata.tables) == 29
+    assert len(Base.metadata.tables) == 40
     assert {
         "trabajadores",
         "supervisores",
@@ -53,6 +53,17 @@ def test_esquema_contiene_todas_las_tablas() -> None:
         "competencias",
         "evaluaciones",
         "evaluacion_detalles",
+        "actividad_criterios",
+        "actividad_criterio_competencias",
+        "evaluacion_criterios",
+        "actividad_areas",
+        "actividad_maquinas",
+        "matriz_puesto_versiones",
+        "puesto_actividad_criterios",
+        "puesto_actividad_criterio_requisitos",
+        "criterio_indicadores",
+        "importaciones_matriz",
+        "borradores_importacion_matriz",
     }.issubset(Base.metadata.tables)
 
 
@@ -103,7 +114,7 @@ def test_nivel_aprobado_se_calcula_con_la_nota_minima() -> None:
     assert not EvaluacionDetalle(nivel_obtenido=2, nivel_minimo=3).aprobado
 
 
-def test_evaluacion_completada_no_se_repite_pero_anulada_si(db: Session) -> None:
+def test_evaluacion_completada_permite_reevaluacion_historica(db: Session) -> None:
     first = Evaluacion(
         trabajador_id=1,
         puesto_id=1,
@@ -121,12 +132,6 @@ def test_evaluacion_completada_no_se_repite_pero_anulada_si(db: Session) -> None
         fecha=date.today(),
         estado="completada",
     )
-    db.add(duplicate)
-    with pytest.raises(IntegrityError):
-        db.commit()
-    db.rollback()
-
-    duplicate.estado = "anulada"
     db.add(duplicate)
     db.commit()
     assert db.query(Evaluacion).count() == 2
@@ -197,6 +202,8 @@ def test_consulta_diferencia_expertis_por_puesto(db: Session) -> None:
                 puesto_id=puesto_operador.id,
                 fecha=date(2026, 7, 1),
                 estado="completada",
+                resultado="no_aprobada",
+                vigente=True,
                 detalles=[
                     EvaluacionDetalle(
                         requisito_id=requisito_operador.id,
@@ -211,6 +218,8 @@ def test_consulta_diferencia_expertis_por_puesto(db: Session) -> None:
                 puesto_id=puesto_ayudante.id,
                 fecha=date(2026, 7, 1),
                 estado="completada",
+                resultado="aprobada",
+                vigente=True,
                 detalles=[
                     EvaluacionDetalle(
                         requisito_id=requisito_ayudante.id,

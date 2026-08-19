@@ -21,3 +21,5 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+# Temporary office-suite lock files
+.~lock.*#

@@ -262,8 +262,27 @@ no sobrescriben datos existentes. La segunda opción es **Omitir registros
 existentes**.
 
 La plantilla contiene hojas para áreas, cargos, turnos, procesos, máquinas,
-actividades, competencias, puestos, requisitos, supervisores, evaluadores,
-trabajadores y asignaciones.
+actividades, competencias (con dimensión, criticidad y nivel sugerido), criterios
+observables, puestos, requisitos, supervisores, evaluadores, trabajadores y
+asignaciones. También acepta el archivo de perfil operativo con las hojas
+`Perfil Operador Principal`, `Resumen Competencias` y `Criterios individualizados`.
+
+Al importar un perfil operativo se debe seleccionar la máquina destino. El sistema
+crea o reutiliza sus puestos de Operador y Ayudante y publica ambas matrices en una
+sola transacción. Operador requiere nivel 3; Ayudante requiere nivel 2 en desempeño
+y nivel 3 en los criterios de seguridad. Una nueva carga crea versiones nuevas sin
+alterar las evaluaciones históricas, y el mismo contenido no se duplica.
+
+Los perfiles se procesan mediante un borrador configurable. Antes de publicar se
+pueden seleccionar varias máquinas, mapear identificadores documentales como CT1 y
+CT2, reutilizar puestos, cambiar niveles, excluir actividades o criterios y ajustar
+obligatoriedad, criticidad y macrocompetencias. La configuración anterior del mismo
+procedimiento se precarga, se muestran las diferencias y siempre se exige una nueva
+confirmación. Los archivos desconocidos se rechazan; no se aceptan cargas vacías.
+
+Para crear una actividad nueva con toda su trazabilidad use **Configuración →
+Nueva ficha operativa**. El asistente permite definir áreas, máquinas, criterios,
+competencias y niveles mínimos por puesto en una sola operación.
 
 La importación valida columnas obligatorias, duplicados, fechas, referencias,
 niveles de competencia, tipos de puesto y relaciones entre entidades. Si hay

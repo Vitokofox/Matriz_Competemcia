@@ -8,7 +8,11 @@
 - `maquinas`: equipos opcionales para los puestos.
 - `puestos`: posiciones concretas asociadas a un cargo y un área.
 - `actividades`: tareas que pueden repetirse en varios puestos.
-- `competencias`: capacidades que se evalúan en una escala de 1 a 5.
+- `actividad_areas` y `actividad_maquinas`: contexto operativo reutilizable de una
+  actividad sin limitarla a una sola área o máquina.
+- `competencias`: capacidades que se evalúan en una escala de 0 a 4.
+- `competencias.dimension`: técnica, conductual, seguridad, calidad o coordinación.
+- `competencias.critica`: identifica competencias cuyo incumplimiento requiere atención especial.
 - `procesos`: procesos operativos pertenecientes a un área.
 
 Los puestos sin máquina permiten representar procesos manuales como Ayudante de
@@ -47,11 +51,29 @@ antes de `fecha_inicio`.
 actividades. `puesto_actividad_competencias` agrega las competencias y el nivel
 mínimo requerido para cada combinación.
 
+`importaciones_matriz` registra cada lote por máquina, contenido normalizado y
+versión de reglas. `matriz_puesto_versiones` permite que una misma carga publique
+matrices independientes para Operador y Ayudante, manteniendo una sola versión
+publicada por puesto y preservando las versiones retiradas.
+
+`borradores_importacion_matriz` conserva el perfil normalizado y la configuración
+revisada antes de publicar. Sus estados son analizado, configurado, validado,
+publicado o fallido. La publicación usa exactamente el contenido validado y crea
+todas las matrices de la configuración dentro de una sola transacción.
+
+`actividad_criterios` contiene los criterios observables de cada actividad, con su
+referencia documental, orden y criticidad. `actividad_criterio_competencias`
+relaciona cada criterio con las competencias que ayuda a evidenciar.
+
+La creación guiada de una ficha operativa registra en una sola transacción la
+actividad, su contexto, criterios, competencias y asignaciones a puestos. Las
+relaciones se mantienen separadas para evitar duplicar actividades reutilizables.
+
 Esto permite usar la misma actividad y competencia con diferente experiencia:
 
 ```text
-Operador Máquina X  -> Operación segura -> nivel mínimo 4
-Ayudante Máquina X  -> Operación segura -> nivel mínimo 3
+Operador Máquina X  -> Operación segura -> nivel mínimo 3
+Ayudante Máquina X  -> Operación segura -> nivel mínimo 2
 ```
 
 ## Evaluaciones
@@ -59,10 +81,23 @@ Ayudante Máquina X  -> Operación segura -> nivel mínimo 3
 - `evaluaciones`: trabajador, evaluador, puesto, fecha, estado y observaciones.
 - `evaluacion_detalles`: requisito evaluado, nivel obtenido, mínimo histórico y
   observaciones.
+- `evaluacion_criterios`: nivel observado de 0 a 4, evidencia, observaciones y
+  snapshot histórico por criterio.
 
-Los niveles tienen restricciones de base de datos entre 1 y 5. Una competencia
+Los niveles tienen restricciones de base de datos entre 0 y 4. Una competencia
 se aprueba cuando `nivel_obtenido >= nivel_minimo`. El mínimo se copia al
 detalle para conservar qué regla se aplicó históricamente.
+
+- 0: no puede realizar la tarea o aún no está entrenado.
+- 1: recibió entrenamiento teórico y comprende los principios básicos.
+- 2: está familiarizado con la tarea y puede realizarla con ayuda.
+- 3: trabaja autónomamente sin ayuda.
+- 4: es experto y puede entrenar a otras personas.
+
+El evaluador puntúa los criterios observables. El nivel de cada competencia se
+calcula como el menor nivel de sus criterios obligatorios. Un criterio crítico de
+seguridad bajo nivel 3 reprueba la evaluación, y un nivel 4 no compensa una brecha
+en otro criterio.
 
 La consulta `obtener_trabajadores_capacitados` devuelve trabajadores activos
 con una evaluación completada que aprueba todos los requisitos vigentes del

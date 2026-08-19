@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   deactivateCatalog,
-  addPositionRequirement,
   activateCatalog,
   activatePerson,
   createCompleteWorker,
-  assignPositionActivity,
   assignPositionMachine,
   assignMachineProcess,
   listCatalog,
@@ -29,11 +27,14 @@ import { MachineManagementPage, PositionManagementPage, ProcessManagementPage } 
 import { RolesManagementPage, UsersManagementPage } from './SecurityManagementPage'
 import { ImportPage } from './ImportPage'
 import { TrainingPlansPage } from './TrainingPlansPage'
+import { CompetencyCatalogPage } from './CompetencyCatalogPage'
+import { MatrixManagementPage } from './MatrixManagementPage'
+import { OperationalActivityPage } from './OperationalActivityPage'
 
 type ConfigKey =
   | 'areas' | 'cargos' | 'turnos' | 'actividades' | 'competencias' | 'maquinas' | 'procesos'
   | 'puestos' | 'supervisores' | 'evaluadores' | 'usuarios' | 'roles' | 'permisos'
-   | 'requisitos' | 'trabajadores' | 'carga' | 'capacitacion'
+    | 'requisitos' | 'ficha' | 'trabajadores' | 'carga' | 'capacitacion'
 
 const catalogConfig: Record<string, { label: string; path: string; code?: boolean }> = {
   areas: { label: 'Áreas', path: 'areas' },
@@ -47,13 +48,13 @@ const catalogConfig: Record<string, { label: string; path: string; code?: boolea
 export function ConfigurationPage() {
   const [active, setActive] = useState<ConfigKey>('areas')
   const item = catalogConfig[active]
-  const catalogKeys: ConfigKey[] = ['areas', 'procesos', 'maquinas', 'puestos', 'actividades', 'competencias', 'requisitos', 'turnos', 'cargos']
+  const catalogKeys: ConfigKey[] = ['areas', 'procesos', 'maquinas', 'puestos', 'actividades', 'competencias', 'ficha', 'requisitos', 'turnos', 'cargos']
 
   return (
     <div className="config-grid">
       <section className="config-nav">
         <p className="eyebrow">Catálogos</p>
-        {catalogKeys.map((key) => <ConfigNavButton key={key} active={active === key} onClick={() => setActive(key)}>{key === 'procesos' ? 'Procesos' : key === 'maquinas' ? 'Máquinas' : key === 'puestos' ? 'Puestos' : key === 'requisitos' ? 'Competencias por puesto' : catalogConfig[key].label}</ConfigNavButton>)}
+        {catalogKeys.map((key) => <ConfigNavButton key={key} active={active === key} onClick={() => setActive(key)}>{key === 'procesos' ? 'Procesos' : key === 'maquinas' ? 'Máquinas' : key === 'puestos' ? 'Puestos' : key === 'requisitos' ? 'Competencias por puesto' : key === 'ficha' ? 'Nueva ficha operativa' : catalogConfig[key].label}</ConfigNavButton>)}
         <p className="eyebrow security-label">Personal</p>
         <ConfigNavButton active={active === 'trabajadores'} onClick={() => setActive('trabajadores')}>Trabajadores</ConfigNavButton>
         <p className="eyebrow security-label">Personas autorizadas</p>
@@ -69,11 +70,13 @@ export function ConfigurationPage() {
       </section>
       <section className="config-panel">
         {active === ('__legacy__' as ConfigKey) && <><WorkerConfigurationPage /><ProcessesPage /><MachinesPage /><PositionsPage /></>}
-        {item && !['maquinas', 'procesos', 'puestos', 'requisitos'].includes(active) && <CatalogPage key={active} config={item} />}
+         {item && !['maquinas', 'procesos', 'puestos', 'requisitos', 'competencias', 'ficha'].includes(active) && <CatalogPage key={active} config={item} />}
         {active === 'procesos' && <ProcessManagementPage />}
         {active === 'maquinas' && <MachineManagementPage />}
         {active === 'puestos' && <PositionManagementPage />}
-        {active === 'requisitos' && <RequirementsPage />}
+         {active === 'competencias' && <CompetencyCatalogPage />}
+         {active === 'ficha' && <OperationalActivityPage />}
+         {active === 'requisitos' && <MatrixManagementPage />}
         {active === 'trabajadores' && <WorkerManagementPage />}
         {(active === 'supervisores' || active === 'evaluadores') && <PeoplePage type={active} />}
         {active === 'usuarios' && <UsersManagementPage />}
@@ -153,34 +156,6 @@ function MachinesPage() {
   useEffect(() => { void Promise.all([listCatalog('maquinas'), listCatalog('procesos')]).then(([machineItems, processItems]) => { setItems(machineItems); setProcesses(processItems) }).catch((reason: unknown) => setError(message(reason))) }, [])
   async function submit(event: FormEvent) { event.preventDefault(); try { const machine = await saveCatalog('maquinas', { nombre: form.nombre, descripcion: form.descripcion }); if (form.process_id) await assignMachineProcess(machine.id, Number(form.process_id)); setForm({ nombre: '', descripcion: '', process_id: '' }); await load() } catch (reason) { setError(message(reason)) } }
   return <><PanelHeading eyebrow="Estructura" title="Máquinas por proceso" count={items.length} /><form className="stack-form" onSubmit={submit}><input required placeholder="Nombre de máquina" value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} /><select required value={form.process_id} onChange={(event) => setForm({ ...form, process_id: event.target.value })}><option value="">Seleccione proceso</option>{processes.map((item) => <option key={item.id} value={item.id}>{item.codigo} · {item.nombre}</option>)}</select><input placeholder="Descripción" value={form.descripcion} onChange={(event) => setForm({ ...form, descripcion: event.target.value })} /><button className="primary-action">Agregar máquina <span>+</span></button></form>{error && <p className="form-error">{error}</p>}<div className="data-table">{items.map((item) => <div className="table-row" key={item.id}><strong>{item.codigo ?? 'AUTO'} · {item.nombre}</strong><span>{item.descripcion || 'Sin descripción'}</span><span className="status-pill">Activa</span></div>)}</div></>
-}
-
-function RequirementsPage() {
-  const [positions, setPositions] = useState<CatalogItem[]>([])
-  const [activities, setActivities] = useState<CatalogItem[]>([])
-  const [competencies, setCompetencies] = useState<CatalogItem[]>([])
-  const [form, setForm] = useState({ positionId: '', activityId: '', competencyId: '', minimum: '3' })
-  const [messageText, setMessageText] = useState('')
-  const [error, setError] = useState('')
-  useEffect(() => {
-    void Promise.all([listCatalog('puestos'), listCatalog('actividades'), listCatalog('competencias')])
-      .then(([positionItems, activityItems, competencyItems]) => { setPositions(positionItems); setActivities(activityItems); setCompetencies(competencyItems) })
-      .catch((reason: unknown) => setError(message(reason)))
-  }, [])
-  async function submit(event: FormEvent) {
-    event.preventDefault(); setMessageText(''); setError('')
-    try {
-      await assignPositionActivity(Number(form.positionId), Number(form.activityId))
-    } catch (reason) {
-      if (!message(reason).toLowerCase().includes('único') && !message(reason).toLowerCase().includes('unique')) { setError(message(reason)); return }
-    }
-    try {
-      await addPositionRequirement(Number(form.positionId), { actividad_id: Number(form.activityId), competencia_id: Number(form.competencyId), nivel_minimo: Number(form.minimum) })
-      setMessageText('Requisito guardado correctamente')
-      setForm({ ...form, competencyId: '' })
-    } catch (reason) { setError(message(reason)) }
-  }
-  return <><PanelHeading eyebrow="Matriz de competencias" title="Competencias por puesto" count={competencies.length} /><p className="helper-text">Defina qué competencia requiere cada actividad y el nivel mínimo de aprobación entre 1 y 5.</p><form className="stack-form" onSubmit={submit}><select required value={form.positionId} onChange={(event) => setForm({ ...form, positionId: event.target.value })}><option value="">Seleccione puesto</option>{positions.map((item) => <option key={item.id} value={item.id}>{item.codigo} · {item.nombre}</option>)}</select><select required value={form.activityId} onChange={(event) => setForm({ ...form, activityId: event.target.value })}><option value="">Seleccione actividad</option>{activities.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select><div className="form-line"><select required value={form.competencyId} onChange={(event) => setForm({ ...form, competencyId: event.target.value })}><option value="">Seleccione competencia</option>{competencies.map((item) => <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} · ` : ''}{item.nombre}</option>)}</select><select value={form.minimum} onChange={(event) => setForm({ ...form, minimum: event.target.value })}>{[1, 2, 3, 4, 5].map((level) => <option key={level} value={level}>Nivel mínimo: {level}</option>)}</select></div><button className="primary-action">Guardar requisito <span>+</span></button></form>{messageText && <p className="success-message">{messageText}</p>}{error && <p className="form-error">{error}</p>}</>
 }
 
 async function fetchPeopleData(type: 'supervisores' | 'evaluadores') {
