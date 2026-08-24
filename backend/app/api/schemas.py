@@ -478,6 +478,19 @@ class EvaluacionResponse(SchemaBase):
     actualizado_en: datetime
 
 
+class HabilitacionOperadorResponse(BaseModel):
+    trabajador_id: int
+    trabajador_codigo: str
+    trabajador_nombre: str
+    puesto_id: int
+    puesto_codigo: str
+    puesto_nombre: str
+    evaluacion_id: int | None
+    fecha_evaluacion: date | None
+    nota: float | None
+    habilitado: bool
+
+
 class PlanCapacitacionActividadCreate(BaseModel):
     actividad_id: int
     fecha_programada: date

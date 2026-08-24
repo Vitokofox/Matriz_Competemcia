@@ -30,6 +30,7 @@ from app.api.schemas import (
     FichaOperativaCreate,
     FichaOperativaResponse,
     HistorialResponse,
+    HabilitacionOperadorResponse,
     LoginRequest,
     MaquinaCreate,
     MaquinaProcesoCreate,
@@ -1816,6 +1817,59 @@ def list_evaluations(db: Session = Depends(get_db), trabajador_id: int | None = 
     if trabajador_id is not None:
         query = query.filter(Evaluacion.trabajador_id == trabajador_id)
     return query.order_by(Evaluacion.fecha.desc(), Evaluacion.id.desc()).all()
+
+
+@router.get(
+    "/evaluaciones/resumen-habilitaciones",
+    response_model=list[HabilitacionOperadorResponse],
+    tags=["evaluaciones"],
+)
+def evaluation_authorization_summary(db: Session = Depends(get_db)):
+    assignments = (
+        db.query(TrabajadorPuesto, Trabajador, Puesto)
+        .join(Trabajador, Trabajador.id == TrabajadorPuesto.trabajador_id)
+        .join(Puesto, Puesto.id == TrabajadorPuesto.puesto_id)
+        .filter(
+            TrabajadorPuesto.fecha_fin.is_(None),
+            Trabajador.activo.is_(True),
+            Puesto.activo.is_(True),
+        )
+        .order_by(Puesto.nombre, Trabajador.apellidos, Trabajador.nombres)
+        .all()
+    )
+    result = []
+    for assignment, worker, position in assignments:
+        del assignment
+        evaluation = (
+            db.query(Evaluacion)
+            .filter_by(
+                trabajador_id=worker.id,
+                puesto_id=position.id,
+                estado="completada",
+            )
+            .order_by(Evaluacion.fecha.desc(), Evaluacion.id.desc())
+            .first()
+        )
+        levels = [detail.nivel_obtenido for detail in evaluation.detalles] if evaluation else []
+        result.append(
+            {
+                "trabajador_id": worker.id,
+                "trabajador_codigo": worker.codigo,
+                "trabajador_nombre": f"{worker.nombres} {worker.apellidos}",
+                "puesto_id": position.id,
+                "puesto_codigo": position.codigo,
+                "puesto_nombre": position.nombre,
+                "evaluacion_id": evaluation.id if evaluation else None,
+                "fecha_evaluacion": evaluation.fecha if evaluation else None,
+                "nota": round(sum(levels) / len(levels), 1) if levels else None,
+                "habilitado": bool(
+                    evaluation
+                    and evaluation.resultado == "aprobada"
+                    and evaluation.vigente
+                ),
+            }
+        )
+    return result
 
 
 @router.get(

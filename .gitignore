@@ -14,6 +14,8 @@ __pycache__/
 # Node
 node_modules/
 dist/
+build/
+release/
 *.tsbuildinfo
 
 # Editors and operating systems

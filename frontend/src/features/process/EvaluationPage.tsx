@@ -3,10 +3,12 @@ import {
   completeEvaluation,
   createEvaluation,
   getPositionChecklist,
+  updateEvaluation,
   type ChecklistActivity,
   type EvaluationItem,
   type WorkerItem,
 } from "../../lib/api";
+import { formatDate, todayLocalDate } from "../../lib/dates";
 
 const LEVELS = [
   [0, "No entrenado"],
@@ -33,6 +35,9 @@ export function EvaluationPage({
   const [observations, setObservations] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [activeStep, setActiveStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [draftEvaluation, setDraftEvaluation] = useState<EvaluationItem | null>(null);
   const [completedEvaluation, setCompletedEvaluation] =
     useState<EvaluationItem | null>(null);
 
@@ -45,37 +50,84 @@ export function EvaluationPage({
   const criteria = activities
     .flatMap((activity) => activity.criterios)
     .filter((item) => item.puesto_criterio_id !== null);
+  const isSummary = activeStep === activities.length;
+  const currentActivity = activities[activeStep];
+  const answered = criteria.filter(
+    (item) => scores[item.puesto_criterio_id!] !== undefined,
+  ).length;
+  const progress = criteria.length ? Math.round((answered / criteria.length) * 100) : 0;
+
+  function activityProgress(activity: ChecklistActivity) {
+    const validCriteria = activity.criterios.filter(
+      (item) => item.puesto_criterio_id !== null,
+    );
+    const completed = validCriteria.filter(
+      (item) => scores[item.puesto_criterio_id!] !== undefined,
+    ).length;
+    return { completed, total: validCriteria.length };
+  }
+
+  function goToFirstIncomplete() {
+    const index = activities.findIndex((activity) =>
+      activity.criterios.some(
+        (item) =>
+          item.puesto_criterio_id !== null &&
+          scores[item.puesto_criterio_id] === undefined,
+      ),
+    );
+    setActiveStep(index >= 0 ? index : activities.length);
+  }
 
   async function submit(complete: boolean) {
     setError("");
-    if (
+    if (complete &&
       criteria.some((item) => scores[item.puesto_criterio_id!] === undefined)
     ) {
       setError("Debe registrar un nivel para todos los criterios");
+      goToFirstIncomplete();
+      return;
+    }
+    const answeredCriteria = criteria.filter(
+      (item) => scores[item.puesto_criterio_id!] !== undefined,
+    );
+    if (!answeredCriteria.length) {
+      setError("Registre al menos un nivel antes de guardar el borrador");
       return;
     }
     if (
-      criteria.some(
+      answeredCriteria.some(
         (item) =>
           scores[item.puesto_criterio_id!] < 3 &&
           !evidence[item.puesto_criterio_id!]?.trim(),
       )
     ) {
       setError("Los niveles 0, 1 y 2 requieren evidencia u observación");
+      const index = activities.findIndex((activity) =>
+        activity.criterios.some((item) => {
+          const id = item.puesto_criterio_id;
+          return id !== null && scores[id] < 3 && !evidence[id]?.trim();
+        }),
+      );
+      if (index >= 0) setActiveStep(index);
       return;
     }
+    setSaving(true);
     try {
-      const evaluation = await createEvaluation({
+      const payload = {
         trabajador_id: worker.id,
         puesto_id: positionId,
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha: todayLocalDate(),
         observaciones: observations,
-        criterios: criteria.map((item) => ({
+        criterios: answeredCriteria.map((item) => ({
           puesto_criterio_id: item.puesto_criterio_id,
           nivel_obtenido: scores[item.puesto_criterio_id!],
           evidencia: evidence[item.puesto_criterio_id!] || undefined,
         })),
-      });
+      };
+      const evaluation = draftEvaluation
+        ? await updateEvaluation(draftEvaluation.id, payload)
+        : await createEvaluation(payload);
+      setDraftEvaluation(evaluation);
       if (complete) {
         setCompletedEvaluation(await completeEvaluation(evaluation.id));
         setNotice("Evaluación completada correctamente");
@@ -84,6 +136,8 @@ export function EvaluationPage({
       }
     } catch (reason) {
       setError(message(reason));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -101,26 +155,38 @@ export function EvaluationPage({
         </div>
         <span>{criteria.length} criterios</span>
       </div>
-      <p className="helper-text">
-        El mínimo se define por puesto y competencia. Los criterios críticos de
-        seguridad siempre requieren nivel 3.
+      <section className="evaluation-progress" aria-label="Progreso de la evaluación">
+        <div><strong>{answered} de {criteria.length}</strong><span>criterios respondidos</span></div>
+        <div className="progress" aria-label={`${progress}% completado`}><span style={{ width: `${progress}%` }} /></div>
+        <strong>{progress}%</strong>
+      </section>
+      <nav className="evaluation-tabs" aria-label="Puntos de evaluación">
+        {activities.map((activity, index) => {
+          const status = activityProgress(activity);
+          const complete = status.total > 0 && status.completed === status.total;
+          return <button key={activity.actividad_id} type="button" className={`${activeStep === index ? "active" : ""} ${complete ? "complete" : ""}`} aria-current={activeStep === index ? "step" : undefined} onClick={() => { setActiveStep(index); setError(""); }}><span>{complete ? "✓" : index + 1}</span><span><strong>{activity.punto_procedimiento ?? `Punto ${index + 1}`}</strong><small>{status.completed}/{status.total} respondidos</small></span></button>;
+        })}
+        <button type="button" className={isSummary ? "active summary-tab" : "summary-tab"} aria-current={isSummary ? "step" : undefined} onClick={() => { setActiveStep(activities.length); setError(""); }}><span>≡</span><span><strong>Resumen final</strong><small>Revisar y completar</small></span></button>
+      </nav>
+      <p className="helper-text evaluation-guidance">
+        Evalúe un punto a la vez. Los niveles 0, 1 y 2 requieren evidencia; los criterios críticos de seguridad exigen nivel 3.
       </p>
       {error && <p className="form-error">{error}</p>}
       {notice && <p className="success-message">{notice}</p>}
-      {activities.map((activity) => (
-        <section className="checklist-activity" key={activity.actividad_id}>
+      {currentActivity && (
+        <section className="checklist-activity active-checklist" key={currentActivity.actividad_id}>
           <div>
-            <small>{activity.punto_procedimiento ?? activity.referencia}</small>
-            <h3>{activity.actividad}</h3>
+            <small>Punto {activeStep + 1} de {activities.length} · {currentActivity.punto_procedimiento ?? currentActivity.referencia}</small>
+            <h3>{currentActivity.actividad}</h3>
           </div>
-          {activity.criterios.map((criterion) => {
+          {currentActivity.criterios.map((criterion, criterionIndex) => {
             const id = criterion.puesto_criterio_id;
             if (id === null) return null;
             const score = scores[id];
             return (
               <div className="checklist-row" key={id}>
                 <div>
-                  <strong>{criterion.descripcion}</strong>
+                  <strong><span className="criterion-number">{criterionIndex + 1}</span>{criterion.descripcion}</strong>
                   <small>
                     {criterion.competencias
                       .map(
@@ -133,7 +199,7 @@ export function EvaluationPage({
                     <small>Criterio crítico de seguridad</small>
                   )}
                   {criterion.indicadores.length > 0 && (
-                    <details>
+                    <details className="criterion-indicators">
                       <summary>Indicadores asociados</summary>
                       <p>{criterion.indicadores.join(" · ")}</p>
                     </details>
@@ -170,27 +236,9 @@ export function EvaluationPage({
             );
           })}
         </section>
-      ))}
-      <textarea
-        disabled={Boolean(completedEvaluation)}
-        className="evaluation-notes"
-        placeholder="Observaciones generales"
-        value={observations}
-        onChange={(event) => setObservations(event.target.value)}
-      />
-      {!completedEvaluation && (
-        <div className="evaluation-actions">
-          <button
-            className="secondary-action"
-            onClick={() => void submit(false)}
-          >
-            Guardar borrador
-          </button>
-          <button className="primary-action" onClick={() => void submit(true)}>
-            Completar evaluación <span>→</span>
-          </button>
-        </div>
       )}
+      {isSummary && <section className="evaluation-summary checklist-activity"><div><p className="eyebrow">Revisión final</p><h3>Resumen de la evaluación</h3><p>{answered === criteria.length ? "Todos los criterios tienen un nivel registrado." : `Faltan ${criteria.length - answered} criterios por responder.`}</p></div><div className="summary-status-grid"><article><span>Criterios</span><strong>{answered}/{criteria.length}</strong></article><article><span>Puntos completos</span><strong>{activities.filter((activity) => { const status = activityProgress(activity); return status.total > 0 && status.completed === status.total }).length}/{activities.length}</strong></article><article><span>Fecha</span><strong>{formatDate(todayLocalDate())}</strong></article></div><label className="evaluation-notes-label">Observaciones generales<textarea disabled={Boolean(completedEvaluation)} className="evaluation-notes" placeholder="Registre aquí comentarios generales, acuerdos o acciones de seguimiento" value={observations} onChange={(event) => setObservations(event.target.value)} /></label>{answered < criteria.length && <button type="button" className="secondary-action" onClick={goToFirstIncomplete}>Ir al primer criterio pendiente</button>}</section>}
+      {!completedEvaluation && activities.length > 0 && <div className="evaluation-step-actions"><button type="button" className="secondary-action" disabled={activeStep === 0 || saving} onClick={() => setActiveStep((step) => Math.max(0, step - 1))}>← Anterior</button><div><button className="secondary-action" disabled={saving} onClick={() => void submit(false)}>{saving ? "Guardando…" : "Guardar borrador"}</button>{!isSummary ? <button type="button" className="primary-action" onClick={() => setActiveStep((step) => Math.min(activities.length, step + 1))}>Siguiente <span>→</span></button> : <button className="primary-action" disabled={saving || answered < criteria.length} onClick={() => void submit(true)}>Completar evaluación <span>✓</span></button>}</div></div>}
       {completedEvaluation && (
         <EvaluationReport
           evaluation={completedEvaluation}
@@ -257,9 +305,7 @@ function EvaluationReport({
             </p>
             <p>
               <strong>Fecha:</strong>{" "}
-              {new Date(`${evaluation.fecha}T00:00:00`).toLocaleDateString(
-                "es-CL",
-              )}
+              {formatDate(evaluation.fecha)}
             </p>
           </div>
           <div className="report-result">

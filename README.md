@@ -125,6 +125,9 @@ códigos automáticos como `TRB-001`, `SUP-001`, `EVA-001`, `CMP-001`, `MAQ-001`
 
 Desde la raíz del proyecto:
 
+Para preparar una distribución `.exe` de Windows, consulte la guía de
+[empaquetado con PyInstaller](docs/empaquetado-windows-pyinstaller.md).
+
 ### Windows
 
 ```powershell

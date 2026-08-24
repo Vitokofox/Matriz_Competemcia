@@ -16,6 +16,7 @@ import { WorkersPage } from './features/process/WorkersPage'
 import { WorkerDetailPage } from './features/process/WorkerDetailPage'
 import { EvaluationsPage } from './features/process/EvaluationsPage'
 import { AppShell, type AppSection, type ConnectionState } from './layouts/AppShell'
+import { AuthorizationSummary } from './features/process/AuthorizationSummary'
 
 type SessionConnectionState = ApiStatus | 'checking' | 'offline'
 
@@ -104,7 +105,7 @@ function Overview() {
   useEffect(() => { void Promise.all([listEvaluations(), listWorkers()]).then(([items, loadedWorkers]) => { setEvaluations(items); setWorkerItems(loadedWorkers) }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'No se pudo cargar el resumen')) }, [])
   const workers = workerItems.filter((item) => item.activo).length
   const completed = evaluations.filter((item) => item.estado === 'completada'); const drafts = evaluations.filter((item) => item.estado === 'borrador'); const approved = completed.flatMap((item) => item.detalles); const approvalRate = approved.length ? Math.round(approved.filter((item) => item.aprobado).length / approved.length * 100) : 0
-  return <div className="overview-page"><div className="process-heading"><div><p className="eyebrow">Vista general</p><h2>Resumen operativo</h2></div><span>Actualizado ahora</span></div>{error && <p className="form-error">{error}</p>}<div className="summary-cards"><article><span>Trabajadores activos</span><strong>{workers}</strong></article><article><span>Evaluaciones completadas</span><strong>{completed.length}</strong></article><article><span>Borradores</span><strong>{drafts.length}</strong></article><article><span>Aprobación global</span><strong>{approvalRate}%</strong></article></div><section className="recent-evaluations"><div className="panel-heading"><div><p className="eyebrow">Actividad reciente</p><h3>Últimas evaluaciones</h3></div><span>{evaluations.length} total</span></div>{evaluations.slice(0, 5).map((item) => <div className="recent-row" key={item.id}><strong>{workerItems.find((worker) => worker.id === item.trabajador_id)?.nombres ?? `Evaluación #${item.id}`}</strong><span>{item.fecha}</span><span className={`status-pill status-${item.estado}`}>{item.estado}</span><span>{item.detalles.filter((detail) => detail.aprobado).length}/{item.detalles.length} aprobadas</span></div>)}{!evaluations.length && <p className="table-empty">Aún no hay evaluaciones registradas.</p>}</section></div>
+  return <div className="overview-page"><div className="process-heading"><div><p className="eyebrow">Vista general</p><h2>Resumen operativo</h2></div><span>Actualizado ahora</span></div>{error && <p className="form-error">{error}</p>}<div className="summary-cards"><article><span>Trabajadores activos</span><strong>{workers}</strong></article><article><span>Evaluaciones completadas</span><strong>{completed.length}</strong></article><article><span>Borradores</span><strong>{drafts.length}</strong></article><article><span>Aprobación global</span><strong>{approvalRate}%</strong></article></div><AuthorizationSummary /></div>
 }
 
 export default App

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { todayLocalDate } from '../../lib/dates'
 import {
   deactivateCatalog,
   activateCatalog,
@@ -217,7 +218,7 @@ function WorkerConfigurationPage() {
   const [selectedPositions, setSelectedPositions] = useState<string[]>([])
   const [positionToAdd, setPositionToAdd] = useState('')
   const [workerCount, setWorkerCount] = useState(0)
-  const [form, setForm] = useState({ documento: '', nombres: '', apellidos: '', cargo_id: '', area_id: '', turno_id: '', supervisor_id: '', fecha_inicio: new Date().toISOString().slice(0, 10) })
+  const [form, setForm] = useState({ documento: '', nombres: '', apellidos: '', cargo_id: '', area_id: '', turno_id: '', supervisor_id: '', fecha_inicio: todayLocalDate() })
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -238,7 +239,7 @@ function WorkerConfigurationPage() {
     event.preventDefault(); setError(''); setNotice('')
     try {
       await createCompleteWorker({ ...form, cargo_id: Number(form.cargo_id), area_id: Number(form.area_id), turno_id: Number(form.turno_id), supervisor_id: Number(form.supervisor_id), puesto_ids: selectedPositions.map(Number) })
-      setForm({ documento: '', nombres: '', apellidos: '', cargo_id: '', area_id: '', turno_id: '', supervisor_id: '', fecha_inicio: new Date().toISOString().slice(0, 10) }); setSelectedPositions([]); setNotice('Trabajador y asignaciones guardados correctamente')
+      setForm({ documento: '', nombres: '', apellidos: '', cargo_id: '', area_id: '', turno_id: '', supervisor_id: '', fecha_inicio: todayLocalDate() }); setSelectedPositions([]); setNotice('Trabajador y asignaciones guardados correctamente')
     } catch (reason) { setError(message(reason)) }
   }
 

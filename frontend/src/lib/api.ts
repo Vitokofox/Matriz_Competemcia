@@ -1,3 +1,5 @@
+import { todayLocalDate } from './dates'
+
 export type ApiStatus = 'ok'
 
 export interface PermissionUser {
@@ -103,6 +105,19 @@ export interface EvaluationItem {
   vigente: boolean
   detalles: EvaluationDetailItem[]
   criterios: EvaluationCriterionItem[]
+}
+
+export interface OperatorAuthorizationSummary {
+  trabajador_id: number
+  trabajador_codigo: string
+  trabajador_nombre: string
+  puesto_id: number
+  puesto_codigo: string
+  puesto_nombre: string
+  evaluacion_id: number | null
+  fecha_evaluacion: string | null
+  nota: number | null
+  habilitado: boolean
 }
 
 export interface TrainingActivity {
@@ -464,7 +479,7 @@ export async function assignPositionMachine(positionId: number, machineId: numbe
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       maquina_id: machineId,
-      fecha_inicio: new Date().toISOString().slice(0, 10),
+      fecha_inicio: todayLocalDate(),
     }),
   })
 }
@@ -475,7 +490,7 @@ export async function assignMachineProcess(machineId: number, processId: number)
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       proceso_id: processId,
-      fecha_inicio: new Date().toISOString().slice(0, 10),
+      fecha_inicio: todayLocalDate(),
     }),
   })
 }
@@ -575,6 +590,10 @@ export async function createEvaluation(data: Record<string, unknown>): Promise<E
 
 export async function listEvaluations(trabajadorId?: number): Promise<EvaluationItem[]> {
   return request<EvaluationItem[]>(`/api/evaluaciones${trabajadorId ? `?trabajador_id=${trabajadorId}` : ''}`)
+}
+
+export async function listOperatorAuthorizations(): Promise<OperatorAuthorizationSummary[]> {
+  return request<OperatorAuthorizationSummary[]>('/api/evaluaciones/resumen-habilitaciones')
 }
 
 export async function downloadImportTemplate(): Promise<Blob> {
@@ -721,7 +740,7 @@ export async function assignWorkerSupervisor(workerId: number, supervisorId: num
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       supervisor_id: supervisorId,
-      fecha_inicio: new Date().toISOString().slice(0, 10),
+      fecha_inicio: todayLocalDate(),
     }),
   })
 }
@@ -732,7 +751,7 @@ export async function assignWorkerPosition(workerId: number, positionId: number)
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       puesto_id: positionId,
-      fecha_inicio: new Date().toISOString().slice(0, 10),
+      fecha_inicio: todayLocalDate(),
     }),
   })
 }

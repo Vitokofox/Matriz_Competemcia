@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
+import sys
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
@@ -59,3 +63,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+
+
+def bundled_frontend_dir() -> Path:
+    base_dir = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
+    return base_dir / "frontend" / "dist"
+
+
+frontend_dist = bundled_frontend_dir()
+if frontend_dist.is_dir():
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_spa(full_path: str):
+        requested = (frontend_dist / full_path).resolve()
+        if requested.is_relative_to(frontend_dist.resolve()) and requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(frontend_dist / "index.html")

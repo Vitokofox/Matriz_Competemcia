@@ -1,3 +1,10 @@
-.auth-layout { background: var(--color-page); }
-.login-card { box-shadow: var(--shadow-md); }
+.auth-layout { position: relative; overflow: hidden; background: linear-gradient(115deg, rgb(61 57 53 / 97%), rgb(105 97 88 / 88%)), radial-gradient(circle at 80% 20%, var(--brand-orange-500), transparent 34rem); }
+.auth-layout::before, .auth-layout::after { position: absolute; border: 52px solid rgb(223 209 167 / 12%); border-radius: 50%; content: ""; pointer-events: none; }
+.auth-layout::before { width: 420px; height: 420px; top: -250px; right: -100px; }
+.auth-layout::after { width: 260px; height: 260px; bottom: -210px; left: -80px; border-color: rgb(191 184 0 / 15%); }
+.auth-intro, .login-card { position: relative; z-index: 1; }
+.auth-intro h1, .auth-intro > p:last-child { color: #fffefa !important; }
+.auth-intro > p:last-child { opacity: .78; }
+.auth-intro .eyebrow { color: var(--brand-beige-500) !important; }
+.login-card { border: 0 !important; border-radius: var(--radius-lg) !important; background: rgb(255 254 250 / 98%) !important; box-shadow: 0 28px 80px rgb(22 19 16 / 30%) !important; }
 .login-card label { font-size: var(--font-size-sm); }

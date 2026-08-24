@@ -10,15 +10,15 @@
   --brand-orange-100: #fde3c9;
   --brand-beige-500: #dfd1a7;
   --brand-beige-100: #f6f1e3;
-  --color-page: #f5f4f1;
-  --color-surface: #ffffff;
-  --color-surface-muted: #eeece8;
-  --color-border: #d8d4cf;
-  --color-border-strong: #aaa39c;
-  --color-text: #292622;
-  --color-text-muted: #625d57;
+  --color-page: #f7f5ef;
+  --color-surface: #fffefa;
+  --color-surface-muted: #f5f2eb;
+  --color-border: #e7e1d6;
+  --color-border-strong: #a99f92;
+  --color-text: #37332f;
+  --color-text-muted: #766f67;
   --color-text-inverse: #ffffff;
-  --color-focus: #28648c;
+  --color-focus: #777300;
   --color-success: #287a50;
   --color-success-bg: #e6f3eb;
   --color-warning: #9d4f00;
@@ -27,7 +27,7 @@
   --color-danger-bg: #fce8e6;
   --color-info: #28648c;
   --color-info-bg: #e7f2f8;
-  --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-sans: Inter, "Segoe UI", Arial, Helvetica, sans-serif;
   --font-size-xs: .75rem;
   --font-size-sm: .875rem;
   --font-size-md: 1rem;
@@ -43,11 +43,11 @@
   --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
-  --radius-sm: .25rem;
-  --radius-md: .5rem;
-  --radius-lg: .75rem;
-  --shadow-sm: 0 1px 2px rgb(41 38 34 / 8%);
-  --shadow-md: 0 .75rem 2rem rgb(73 67 62 / 12%);
+  --radius-sm: .625rem;
+  --radius-md: .875rem;
+  --radius-lg: 1.125rem;
+  --shadow-sm: 0 8px 24px rgb(70 62 52 / 7%);
+  --shadow-md: 0 18px 48px rgb(70 62 52 / 9%);
   --control-height: 2.75rem;
   --content-max-width: 90rem;
   --transition-fast: 150ms ease;
@@ -59,4 +59,6 @@
   --sans: var(--font-sans);
   --display: var(--font-sans);
   --mono: var(--font-sans);
+  --ink: var(--brand-gray-900);
+  --peach: var(--brand-orange-100);
 }

@@ -13,3 +13,15 @@
 @import './workerDetail.css';
 @import './positionActivities.css';
 @import './settings.css';
+
+/* Visual language shared with ControlSistema. */
+body {
+  background:
+    radial-gradient(circle at 92% 0, rgb(223 209 167 / 42%), transparent 34rem),
+    var(--color-page);
+}
+
+::selection { background: var(--brand-beige-500); color: var(--brand-gray-900); }
+
+button, input, select, textarea { transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), transform var(--transition-fast); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid rgb(191 184 0 / 35%); outline-offset: 2px; }
